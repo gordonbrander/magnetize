@@ -1,3 +1,4 @@
+use crate::magnet::MagnetLinkError;
 use data_encoding::DecodeError;
 
 #[derive(Debug)]
@@ -5,6 +6,7 @@ pub enum Error {
     IoError(std::io::Error),
     ValueError(String),
     DecodeError(DecodeError),
+    MagnetLinkError(MagnetLinkError),
 }
 
 impl std::fmt::Display for Error {
@@ -13,6 +15,7 @@ impl std::fmt::Display for Error {
             Error::ValueError(message) => write!(f, "ValueError: {}", message),
             Error::IoError(err) => write!(f, "IoError: {}", err),
             Error::DecodeError(err) => write!(f, "DecodeError: {}", err),
+            Error::MagnetLinkError(err) => write!(f, "MagnetLinkError: {}", err),
         }
     }
 }
