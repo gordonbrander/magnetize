@@ -1,14 +1,28 @@
 # magnetize
 
-> "We have IPFS at home".
+> "We have IPFS at home"
 
 Content addressed data over HTTP using magnet links.
-
-Basically include a CID, plus multiple redundant places where you can GET it over HTTP.
 
 ```
 magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
 ```
+
+Magnet link describes a CID, plus multiple redundant places to GET it over HTTP. Minimum viable decentralization is n > 1. Magnetize is the simplest way to get there.
+
+Magnetize offers a CLI with several tools for content-addressed data over HTTP:
+
+- `mag get <MAGNET_URL>` - fetch content addressed over HTTP using a magnet link. This command will try locations until it finds one that succeeds.
+- `mag serve <DIR>` - serves content addressed file data over HTTP. Files are served from the directory specified by the `dir` argument. The server is built in Rust, so is reasonably fast.
+- `mag add <FILE>` - add content addressed data from a file. This command will create a new file in the current directory, whose name is the CID of the data.
+
+See `mag --help` for a full list of commands and features.
+
+## How it works
+
+
+
+CID is used to check data integrity, the servers do not need to be trusted.
 
 
 ## Magnet links
