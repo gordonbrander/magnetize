@@ -1,5 +1,6 @@
 pub use clap::Parser;
 use clap::Subcommand;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "Magenc")]
@@ -26,14 +27,18 @@ pub enum Commands {
 
     #[command(about = "Serve content addressed files over HTTP")]
     Serve {
-        #[arg(help = "Directory to serve")]
+        #[arg(help = "Directory to serve. Creates directory if it doesn't already exist.")]
         #[arg(value_name = "DIRECTORY")]
         #[arg(default_value = "public")]
-        dir: String,
+        dir: PathBuf,
 
         #[arg(help = "Address to listen on")]
         #[arg(value_name = "ADDRESS")]
         #[arg(default_value = "0.0.0.0:3000")]
         addr: String,
+
+        #[arg(help = "Allow file uploads via POST?")]
+        #[arg(short = 'p', long = "post")]
+        post: bool,
     },
 }

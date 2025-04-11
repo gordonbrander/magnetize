@@ -7,47 +7,49 @@ use axum::{
 };
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use std::path::{self, PathBuf};
+use std::path::PathBuf;
 use tokio::{fs::File, io::AsyncReadExt};
 
 #[derive(Clone)]
-pub struct AppState {
+pub struct ServerState {
+    pub address: String,
     pub file_storage_dir: PathBuf,
+    pub allow_post: bool,
 }
 
 /// Multithread server (number of threads = number of CPUs)
 #[tokio::main(flavor = "multi_thread")]
-pub async fn serve<P>(addr: &str, dir: P)
-where
-    P: AsRef<path::Path>,
-{
+pub async fn serve(state: ServerState) {
     // Create the file storage directory if it doesn't exist
-    std::fs::create_dir_all(dir.as_ref()).expect("Unable to create file storage directory");
-
-    let state = AppState {
-        file_storage_dir: dir.as_ref().to_path_buf(),
-    };
+    std::fs::create_dir_all(&state.file_storage_dir)
+        .expect("Unable to create file storage directory");
 
     // Build our application with routes
     let app = Router::new()
+        .route("/", get(get_index))
         .route("/files/{filename}", get(get_file))
         .route("/files", post(upload_file))
-        .with_state(state);
+        .with_state(state.clone());
 
     // Run the server
-    let listener = tokio::net::TcpListener::bind(addr)
+    let listener = tokio::net::TcpListener::bind(&state.address)
         .await
         .expect("Unable to bind server to address");
 
-    println!("Server listening on {}", addr);
+    println!("Server listening on {}", &state.address);
 
     axum::serve(listener, app)
         .await
         .expect("Unable to start server");
 }
 
+// Handler for GET /
+async fn get_index() -> Response {
+    (StatusCode::OK, "GET /{CID}").into_response()
+}
+
 // Handler for GET /files/:filename
-async fn get_file(State(state): State<AppState>, Path(filename): Path<String>) -> Response {
+async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
     let path = PathBuf::from(state.file_storage_dir).join(&filename);
 
     match File::open(&path).await {
@@ -64,7 +66,11 @@ async fn get_file(State(state): State<AppState>, Path(filename): Path<String>) -
 }
 
 // Handler for POST /files
-async fn upload_file(State(state): State<AppState>, mut multipart: Multipart) -> Response {
+async fn upload_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
+    if state.allow_post == false {
+        return (StatusCode::FORBIDDEN, "Uploads are not allowed").into_response();
+    }
+
     while let Ok(Some(field)) = multipart.next_field().await {
         // Get the file data
         let data = match field.bytes().await {
