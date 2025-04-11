@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::result;
 use url::{self, Url};
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MagnetLink {
     /// CID for the data
     pub cid: Cid,
