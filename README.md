@@ -71,6 +71,7 @@ This CID type is described in more detail here: [dasl.ing/cid.html](dasl.ing/cid
   - [x] Option to turn of POST
   - [ ] Option to require secret to POST
   - [ ] Option to encrypt content ala Magenc
+  - [ ] Simple federation using a text file containing a list of known CDNs (and maybe BitTorrent)
 
 ## Development
 
