@@ -1,7 +1,7 @@
-use magenc::cid::Cid;
-use magenc::cli::{Cli, Commands, Parser};
-use magenc::magnet::{MagnetLink, get_blocking};
-use magenc::server::{ServerState, serve};
+use magnetize::cid::Cid;
+use magnetize::cli::{Cli, Commands, Parser};
+use magnetize::magnet::{MagnetLink, get_blocking};
+use magnetize::server::{ServerState, serve};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;

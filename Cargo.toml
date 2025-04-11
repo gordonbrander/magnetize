@@ -1,5 +1,5 @@
 [package]
-name = "magenc"
+name = "magnetize"
 version = "0.1.0"
 edition = "2024"
 
