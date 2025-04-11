@@ -4,7 +4,7 @@
 
 Content-addressed data over HTTP using magnet links.
 
-```
+```url
 magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
 ```
 
