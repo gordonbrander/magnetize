@@ -20,6 +20,26 @@ Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 
 See `mag --help` for a full list of commands and features.
 
+## TODO
+
+- [ ] `link` - create magnet for any HTTP URL
+  - [ ] Fetch URL
+  - [ ] Generate CID
+  - [ ] Generates infohash
+  - [ ] Return magnet
+- [ ] `get` - fetch file using redundant sources
+  - [x] Fetch magnet using http
+  - [ ] Fetch magnet using BitTorrent
+- [x] `add` - add content-addressed data to directory
+- [ ] `mirror` - fetch content from URL and add it to directory
+- [ ] `serve` - content-addressed file server
+  - [x] GET content by CID
+  - [x] POST content to server
+  - [x] Option to turn of POST
+  - [ ] Option to require secret to POST
+  - [ ] Option to encrypt content ala Magenc
+  - [ ] Simple federation using a text file containing a list of known CDNs (and maybe BitTorrent)
+
 ## Magnet links
 
 Magnet links bundle together multiple ways to fetch the same data. They are frequently used for locating data on BitTorrent, but are a general-purpose protocol that can be used in various contexts. Magnetize extends magnet links, adding parameters to support content-addressed data over HTTP.
@@ -52,26 +72,6 @@ Magnetize supports one kind of IPFS CID:
 - raw bytes (multicodec)
 
 This CID type is described in more detail here: [dasl.ing/cid.html](dasl.ing/cid.html).
-
-## TODO
-
-- [ ] `link` - create magnet for any HTTP URL
-  - [ ] Fetch URL
-  - [ ] Generate CID
-  - [ ] Generates infohash
-  - [ ] Return magnet
-- [ ] `get` - fetch file using redundant sources
-  - [x] Fetch magnet using http
-  - [ ] Fetch magnet using BitTorrent
-- [x] `add` - add content-addressed data to directory
-- [ ] `mirror` - fetch content from URL and add it to directory
-- [ ] `serve` - content-addressed file server
-  - [x] GET content by CID
-  - [x] POST content to server
-  - [x] Option to turn of POST
-  - [ ] Option to require secret to POST
-  - [ ] Option to encrypt content ala Magenc
-  - [ ] Simple federation using a text file containing a list of known CDNs (and maybe BitTorrent)
 
 ## Development
 
