@@ -78,7 +78,7 @@ async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -
             Err(_) => return (StatusCode::BAD_REQUEST, "Failed to read file data").into_response(),
         };
 
-        let cid = Cid::new(&data);
+        let cid = Cid::of(&data);
         let cid_string = cid.to_string();
 
         // Save the file with the hash as the name

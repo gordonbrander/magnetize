@@ -33,7 +33,7 @@ fn cmd_add(file: Option<PathBuf>) {
 
 fn cmd_add_file(file: PathBuf) {
     let bytes = fs::read(&file).expect("Unable to read file");
-    let cid = Cid::new(&bytes);
+    let cid = Cid::of(&bytes);
     let cid_pathbuf = PathBuf::from(cid.to_string());
     fs::write(&cid_pathbuf, bytes).expect("Unable to write file");
     println!("{}", cid);
@@ -44,7 +44,7 @@ fn cmd_add_stdin() {
     io::stdin()
         .read_to_end(&mut bytes)
         .expect("Unable to read stdin");
-    let cid = Cid::new(&bytes);
+    let cid = Cid::of(&bytes);
     let cid_pathbuf = PathBuf::from(cid.to_string());
     fs::write(&cid_pathbuf, bytes).expect("Unable to write file");
 }

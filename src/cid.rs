@@ -1,6 +1,6 @@
-use crate::error::{Error, Result};
 use data_encoding;
 use sha2::{Digest, Sha256};
+use std::result;
 
 const CID_VERSION: u8 = 0x01;
 const MULTICODEC_RAW: u8 = 0x55;
@@ -19,9 +19,9 @@ impl Cid {
     }
 
     /// Construct a CIDv1 from bytes representing a CIDv1
-    pub fn from_cid_bytes(cid_bytes: Vec<u8>) -> Result<Self> {
+    pub fn parse_bytes(cid_bytes: Vec<u8>) -> result::Result<Self, CidError> {
         if cid_bytes.len() != 36 {
-            return Err(Error::ValueError("Invalid CID length".to_string()));
+            return Err(CidError::ValueError("Invalid CID length".to_string()));
         }
 
         let version = cid_bytes[0];
@@ -34,7 +34,7 @@ impl Cid {
             || hash_algo != MULTIHASH_SHA256
             || hash_len != 32
         {
-            return Err(Error::ValueError("Invalid CID format".to_string()));
+            return Err(CidError::ValueError("Invalid CID format".to_string()));
         }
 
         let hash = cid_bytes[4..].to_vec();
@@ -43,21 +43,21 @@ impl Cid {
 
     /// Parse a CIDv1 from a string representation.
     /// CID must be multicodec base32 lowercase encoded.
-    pub fn from_cid_str(cid_str: &str) -> Result<Self> {
+    pub fn parse(cid_str: &str) -> result::Result<Self, CidError> {
         // Check if the CID starts with "b" (multicodec code for base32 lowercase encoded)
         if !cid_str.starts_with("b") {
-            return Err(Error::ValueError(
+            return Err(CidError::ValueError(
                 "Invalid CID. CID must be multicodec base32 lowercase encoded (starts with 'b')"
                     .to_string(),
             ));
         }
         let cid_body = &cid_str[1..]; // drop the "b"
         let cid_bytes = data_encoding::BASE32_NOPAD_NOCASE.decode(cid_body.as_bytes())?;
-        Self::from_cid_bytes(cid_bytes)
+        Self::parse_bytes(cid_bytes)
     }
 
     /// Create a CIDv1 by hashing raw bytes
-    pub fn new(bytes: impl AsRef<[u8]>) -> Self {
+    pub fn of(bytes: impl AsRef<[u8]>) -> Self {
         let sha256_hash = Sha256::digest(bytes.as_ref());
         Self::from_sha256(sha256_hash.to_vec())
     }
@@ -107,21 +107,32 @@ impl Cid {
     }
 }
 
-impl From<String> for Cid {
-    fn from(s: String) -> Self {
-        Self::new(s.as_bytes())
-    }
-}
-
-impl From<&str> for Cid {
-    fn from(s: &str) -> Self {
-        Self::new(s.as_bytes())
-    }
-}
-
 impl std::fmt::Display for Cid {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.to_string())
+    }
+}
+
+#[derive(Debug)]
+pub enum CidError {
+    DecodeError(data_encoding::DecodeError),
+    ValueError(String),
+}
+
+impl std::fmt::Display for CidError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CidError::DecodeError(err) => write!(f, "Decode error: {}", err),
+            CidError::ValueError(err) => write!(f, "Value error: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for CidError {}
+
+impl From<data_encoding::DecodeError> for CidError {
+    fn from(err: data_encoding::DecodeError) -> Self {
+        CidError::DecodeError(err)
     }
 }
 
@@ -132,7 +143,7 @@ mod tests {
     #[test]
     fn test_cid_to_bytes_constructs_a_valid_cid() {
         let bytes = b"test data";
-        let cid = Cid::new(bytes).to_bytes();
+        let cid = Cid::of(bytes).to_bytes();
 
         // Verify the structure is correct
         assert_eq!(cid[0], CID_VERSION);
@@ -145,7 +156,7 @@ mod tests {
     #[test]
     fn test_cid_to_string_constructs_a_valid_cid() {
         let text = "hello world";
-        let cid = Cid::from(text);
+        let cid = Cid::of(text.as_bytes());
 
         // Known value test - this hash is for "hello world"
         let expected_cid = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e";
@@ -154,8 +165,8 @@ mod tests {
 
     #[test]
     fn test_different_inputs_yield_different_cids() {
-        let cid1 = Cid::from("data1");
-        let cid2 = Cid::from("data2");
+        let cid1 = Cid::of("data1".as_bytes());
+        let cid2 = Cid::of("data2".as_bytes());
 
         // Check that different inputs create different CIDs
         assert_ne!(cid1.0, cid2.0);
@@ -164,8 +175,8 @@ mod tests {
 
     #[test]
     fn test_identical_inputs_yield_same_cids() {
-        let cid1 = Cid::from("same data");
-        let cid2 = Cid::from("same data");
+        let cid1 = Cid::of("same data".as_bytes());
+        let cid2 = Cid::of("same data".as_bytes());
 
         // Check that identical inputs create the same CID
         assert_eq!(cid1.0, cid2.0);
