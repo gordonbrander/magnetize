@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "Magenc")]
-#[command(about = "Decentralize HTTP!")]
+#[command(about = "Decentralize HTTP somewhat")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -19,10 +19,11 @@ pub enum Commands {
         url: String,
     },
 
-    Post {
-        #[arg(help = "File to post")]
+    #[command(about = "Add data to current directory. Creates a file using the CID as filename.")]
+    Add {
+        #[arg(help = "File to add. If file is not provided, reads from stdin.")]
         #[arg(value_name = "FILE")]
-        file: String,
+        file: Option<PathBuf>,
     },
 
     #[command(about = "Serve content addressed files over HTTP")]

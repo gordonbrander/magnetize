@@ -1,6 +1,8 @@
 # magneto
 
-Content-addressed data over HTTP. "We have IPFS at home".
+"We have IPFS at home".
+
+Decentralize HTTP somewhat with content addressed data.
 
 ## TODO
 
@@ -12,6 +14,7 @@ Content-addressed data over HTTP. "We have IPFS at home".
 - [ ] `get` - fetch file using redundant sources
   - [ ] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
+- [ ] `add` - add content-addressed data to directory
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] POST content to server

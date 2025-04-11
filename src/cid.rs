@@ -118,6 +118,12 @@ impl From<&str> for Cid {
     }
 }
 
+impl std::fmt::Display for Cid {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
