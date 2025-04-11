@@ -1,6 +1,6 @@
 use crate::cid::Cid;
 use crate::error::Error;
-use std::collections::HashMap;
+use crate::util::group;
 use std::result;
 use url::{self, Url};
 
@@ -16,22 +16,12 @@ pub struct MagnetLink {
     pub dn: Option<String>,
 }
 
-fn index_query(pairs: Vec<(String, String)>) -> HashMap<String, Vec<String>> {
-    let mut query: HashMap<String, Vec<String>> = HashMap::new();
-
-    pairs.into_iter().for_each(|(key, value)| {
-        query.entry(key).or_insert(Vec::new()).push(value);
-    });
-
-    query
-}
-
 impl MagnetLink {
     /// Parse a magnet link str into a Magnet struct.
     pub fn parse(url_str: &str) -> result::Result<Self, MagnetLinkError> {
         let url = Url::parse(url_str)?;
 
-        let query = index_query(
+        let query = group(
             url.query_pairs()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
