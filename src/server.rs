@@ -1,3 +1,4 @@
+use crate::cid::Cid;
 use axum::{
     Router,
     extract::{Multipart, Path, State},
@@ -5,7 +6,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::PathBuf;
 use tokio::{fs::File, io::AsyncReadExt};
@@ -27,8 +27,8 @@ pub async fn serve(state: ServerState) {
     // Build our application with routes
     let app = Router::new()
         .route("/", get(get_index))
-        .route("/files/{filename}", get(get_file))
-        .route("/files", post(upload_file))
+        .route("/", post(post_file))
+        .route("/{filename}", get(get_file))
         .with_state(state.clone());
 
     // Run the server
@@ -48,7 +48,7 @@ async fn get_index() -> Response {
     (StatusCode::OK, "GET /{CID}").into_response()
 }
 
-// Handler for GET /files/:filename
+// Handler for GET /CID
 async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
     let path = PathBuf::from(state.file_storage_dir).join(&filename);
 
@@ -65,8 +65,8 @@ async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>
     }
 }
 
-// Handler for POST /files
-async fn upload_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
+// Handler for POST /
+async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
     if state.allow_post == false {
         return (StatusCode::FORBIDDEN, "Uploads are not allowed").into_response();
     }
@@ -78,13 +78,11 @@ async fn upload_file(State(state): State<ServerState>, mut multipart: Multipart)
             Err(_) => return (StatusCode::BAD_REQUEST, "Failed to read file data").into_response(),
         };
 
-        // Calculate the SHA256 hash of the file contents
-        let mut hasher = Sha256::new();
-        hasher.update(&data);
-        let hash = format!("{:x}", hasher.finalize());
+        let cid = Cid::new(&data);
+        let cid_string = cid.to_string();
 
         // Save the file with the hash as the name
-        let path = PathBuf::from(state.file_storage_dir).join(&hash);
+        let path = PathBuf::from(state.file_storage_dir).join(&cid_string);
         match std::fs::File::create(&path) {
             Ok(mut file) => {
                 if let Err(_) = file.write_all(&data) {
@@ -98,7 +96,7 @@ async fn upload_file(State(state): State<ServerState>, mut multipart: Multipart)
             }
         }
 
-        return (StatusCode::CREATED, hash).into_response();
+        return (StatusCode::CREATED, cid_string).into_response();
     }
 
     (StatusCode::BAD_REQUEST, "No file provided").into_response()
