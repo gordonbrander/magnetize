@@ -2,13 +2,13 @@
 
 > "We have IPFS at home"
 
-Content addressed data over HTTP using magnet links.
+Content-addressed data over HTTP using magnet links.
 
 ```
 magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
 ```
 
-Magnet link describes a CID, plus multiple redundant places to GET it over HTTP. Minimum viable decentralization is n > 1. Magnetize is the simplest way to get there.
+Minimum viable decentralization is n > 1. Magnetize achieves minimum viable decentralization by combining a CID with multiple redundant places to GET it over HTTP.
 
 Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 
@@ -17,13 +17,6 @@ Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 - `mag add <FILE>` - add content addressed data from a file. This command will create a new file in the current directory, whose name is the CID of the data.
 
 See `mag --help` for a full list of commands and features.
-
-## How it works
-
-
-
-CID is used to check data integrity, the servers do not need to be trusted.
-
 
 ## Magnet links
 
