@@ -14,13 +14,13 @@ Decentralize HTTP somewhat with content addressed data.
 - [ ] `get` - fetch file using redundant sources
   - [ ] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
-- [ ] `add` - add content-addressed data to directory
+- [x] `add` - add content-addressed data to directory
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] POST content to server
   - [x] Option to turn of POST
-  - [ ] Option to gate on secret
-  - [ ] Option to encrypt ala Magenc
+  - [ ] Option to require secret to POST
+  - [ ] Option to encrypt content ala Magenc
 
 ## Development
 
