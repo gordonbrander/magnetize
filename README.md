@@ -15,6 +15,7 @@ Decentralize HTTP somewhat with content addressed data.
   - [ ] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
 - [x] `add` - add content-addressed data to directory
+- [ ] `mirror` - fetch content from URL and add it to directory
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] POST content to server
