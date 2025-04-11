@@ -38,7 +38,9 @@ Note it is possible to construct a hybrid magnet link that works with both Magne
 magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
 ```
 
-This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable.
+This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable. This approach essentially farms out open-ended discovery to BitTorrent's mainline DHT, which is already widely distributed and proven at scale. You can think of the `xs` and `cdn` parameters as high availability peers to try first, while ultimately allowing fallback on BitTorrent if they go down or are censored.
+
+> TODO see if we can bundle a Torrent client into `mag get`.
 
 ## CIDs
 
