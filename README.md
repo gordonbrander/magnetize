@@ -29,14 +29,16 @@ Supported magnet link parameters:
 - `cid`: the CID.
 - `cdn`: URL to a location where you can GET the data by CID. E.g. if `cdn=https://example.com/ipfs`, then you can GET `https://example.com/ipfs/<CID>`.
 - `xs`: "Exact Source". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
-- `xt`: "Exact Topic". The BitTorrent infohash (optional).
 - `dn`: "Display Name". A suggested file name.
+- `xt`: "Exact Topic". The BitTorrent infohash (optional).
 
-It is also possible to construct a hybrid magnet link that works with both Magnetize and BitTorrent by including the [`xt` parameter](https://blog.libtorrent.org/2020/09/bittorrent-v2/#:~:text=the%20same%20torrent.-,magnet%20links,-The%20magnet%20link)
+Note it is possible to construct a hybrid magnet link that works with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/) by including the `xt` parameter.
 
 ```url
 magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
 ```
+
+This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable.
 
 ## CIDs
 
