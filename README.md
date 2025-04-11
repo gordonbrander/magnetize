@@ -10,6 +10,8 @@ magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
 
 Minimum viable decentralization is n > 1. Magnetize achieves minimum viable decentralization by combining a CID with multiple redundant places to GET it over HTTP.
 
+Notably, you do not have to trust the servers listed in the magnet link to serve the correct data. The CID acts as a cryptographic proof for the data, ensuring you get exactly the data you requested.
+
 Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 
 - `mag get <MAGNET_URL>` - fetch content addressed over HTTP using a magnet link. This command will try locations until it finds one that succeeds.
@@ -29,6 +31,12 @@ Supported magnet link parameters:
 - `xs`: "Exact Source". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
 - `xt`: "Exact Topic". The BitTorrent infohash (optional).
 - `dn`: "Display Name". A suggested file name.
+
+It is also possible to construct a hybrid magnet link that works with both Magnetize and BitTorrent by including the [`xt` parameter](https://blog.libtorrent.org/2020/09/bittorrent-v2/#:~:text=the%20same%20torrent.-,magnet%20links,-The%20magnet%20link)
+
+```url
+magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
+```
 
 ## CIDs
 
