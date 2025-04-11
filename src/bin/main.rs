@@ -1,8 +1,7 @@
 use magenc::cid::Cid;
 use magenc::cli::{Cli, Commands, Parser};
-use magenc::magnet::MagnetLink;
+use magenc::magnet::{MagnetLink, get_blocking};
 use magenc::server::{ServerState, serve};
-use reqwest;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -26,29 +25,11 @@ fn main() {
 
 fn cmd_get(url: &str) {
     let mag = MagnetLink::parse(url).expect("Unable to parse magnet link");
-    for url in mag.xs {
-        match reqwest::blocking::get(url) {
-            Ok(response) => {
-                let bytes = response.bytes().expect("Unable to read response body");
-                let cid = Cid::of(&bytes);
+    let body = get_blocking(&mag).expect("Resource not found");
 
-                if mag.cid != cid {
-                    eprintln!("Response bytes do not match CID. Trying next URL.");
-                    continue;
-                }
-
-                io::stdout()
-                    .write_all(&bytes)
-                    .expect("Unable to write to stdout");
-
-                return;
-            }
-            Err(err) => {
-                eprintln!("Error: {}", err);
-            }
-        };
-    }
-    eprintln!("Resource not found");
+    io::stdout()
+        .write_all(&body)
+        .expect("Unable to write to stdout");
 }
 
 fn cmd_add(file: Option<PathBuf>) {
