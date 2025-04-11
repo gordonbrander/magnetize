@@ -12,7 +12,7 @@ Decentralize HTTP somewhat with content addressed data.
   - [ ] Generates infohash
   - [ ] Return magnet
 - [ ] `get` - fetch file using redundant sources
-  - [ ] Fetch magnet using http
+  - [x] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
 - [x] `add` - add content-addressed data to directory
 - [ ] `mirror` - fetch content from URL and add it to directory
