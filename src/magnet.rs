@@ -262,8 +262,8 @@ mod tests {
         assert!(
             url_string.contains("cid=bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4")
         );
-        assert!(url_string.contains("xt="));
-        assert!(url_string.contains("dn="));
+        assert!(!url_string.contains("ws="), "Does not contain ws=");
+        assert!(!url_string.contains("dn="), "Does not contain dn=");
 
         // Parse back to verify roundtrip conversion (although the empty fields will be None)
         let parsed = MagnetLink::parse(&url_string).unwrap();
