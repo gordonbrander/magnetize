@@ -92,7 +92,7 @@ Once deserialized to bytes, a CIDv1 has the following byte structure:
 4. A hash size, which is the size in bytes of the hash digest. Always `32` for sha256.
 5. A hash digest, which is the hash of the raw bytes.
 
-This CID type is described in more detail here: [https://dasl.ing/cid.html](dasl.ing/cid.html).
+This CID type is described in more detail here: [dasl.ing/cid.html](https://dasl.ing/cid.html).
 
 ## Development
 
