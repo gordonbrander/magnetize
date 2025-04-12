@@ -73,12 +73,26 @@ This gives the magnet link added resiliency by allowing clients to fall back to 
 
 Magnetize supports one kind of IPFS CID:
 
-- CIDv1
-- base32 (multibase)
-- sha256 (multihash)
-- raw bytes (multicodec)
+- Multibase: base32
+- CID: v1
+- Multicodec: raw bytes
+- Multihash: sha256
 
-This CID type is described in more detail here: [dasl.ing/cid.html](dasl.ing/cid.html).
+In string form, the cid is always encoded in multibase lowercase base32. This means the CID string will always have prefix of `b` (multibase flag for base32).
+
+Once deserialized to bytes, a CIDv1 has the following byte structure:
+
+```
+<version><multicodec><multihash><size><digest>
+```
+
+1. A CID version number, which is currently always 1.
+2. A content codec, which is currently always `0x55` (multicodec flag for raw bytes)
+3. A hash function, which is currently always `0x12` (multihash flag for sha256)
+4. A hash size, which is the size in bytes of the hash digest. Always `32` for sha256.
+5. A hash digest, which is the hash of the raw bytes.
+
+This CID type is described in more detail here: [https://dasl.ing/cid.html](dasl.ing/cid.html).
 
 ## Development
 
