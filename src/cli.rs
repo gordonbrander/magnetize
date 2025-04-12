@@ -19,6 +19,14 @@ pub enum Commands {
         url: String,
     },
 
+    Link {
+        #[arg(
+            help = "Create a magnet link from one or more HTTP URLs. Fetches the content, generates a CID, and returns the magnet link."
+        )]
+        #[arg(value_name = "URL")]
+        url: Vec<String>,
+    },
+
     #[command(about = "Add data to current directory. Creates a file using the CID as filename.")]
     Add {
         #[arg(help = "File to add. If file is not provided, reads from stdin.")]

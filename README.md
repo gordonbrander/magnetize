@@ -14,24 +14,28 @@ Notably, you do not have to trust the servers listed in the magnet link to serve
 
 Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 
-- `mag get <MAGNET_URL>` - fetch content addressed over HTTP using a magnet link. This command will try locations until it finds one that succeeds.
-- `mag serve <DIR>` - file server for content addressed data. The server is written in Rust, so is reasonably fast.
+- `mag get <MAGNET_URL>`: fetch content addressed data over HTTP(S) using a magnet link. This command will try locations until it finds one that succeeds.
+- `mag link <URL>...`: create a magnet link from one or more HTTP(s) URLs.
+- `mag serve <DIR>`: simple file server for content addressed data. The server is written in Rust, so is reasonably fast.
 - `mag add <FILE>` - add content addressed data from a file. This command will create a new file in the current directory, whose name is the CID of the data.
 
 See `mag --help` for a full list of commands and features.
 
 ## TODO
 
-- [ ] `link` - create magnet for any HTTP URL
-  - [ ] Fetch URL
-  - [ ] Generate CID
+- [x] `link` - create magnet for any HTTP URL
+  - [x] Fetch URL
+  - [x] Generate CID
+  - [x] Integrity check
   - [ ] Generates infohash
-  - [ ] Return magnet
+  - [x] Return magnet
 - [ ] `get` - fetch file using redundant sources
   - [x] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
 - [x] `add` - add content-addressed data to directory
-- [ ] `mirror` - fetch content from URL and add it to directory
+- [ ] `mirror` - fetch content from URL/CDN and add it to directory
+  - [ ] Fetch single CID
+  - [ ] Federate with another mirror
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] POST content to server

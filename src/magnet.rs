@@ -84,10 +84,15 @@ impl MagnetLink {
         {
             let mut query = url.query_pairs_mut();
 
-            query
-                .append_pair("cid", &self.cid.to_string())
-                .append_pair("xt", &self.xt.as_ref().unwrap_or(&"".to_string()))
-                .append_pair("dn", &self.dn.as_ref().unwrap_or(&"".to_string()));
+            query.append_pair("cid", &self.cid.to_string());
+
+            if let Some(xt) = &self.xt {
+                query.append_pair("xt", xt);
+            }
+
+            if let Some(dn) = &self.dn {
+                query.append_pair("dn", dn);
+            }
 
             for value in self.cdn.iter() {
                 query.append_pair("cdn", value);
