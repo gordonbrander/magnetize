@@ -234,6 +234,7 @@ mod tests {
         };
 
         let url_string = magnet_link.to_string();
+        assert!(url_string.starts_with("magnet:?"), "Starts with magnet:?");
 
         // Parse back to verify roundtrip conversion
         let parsed = MagnetLink::parse(&url_string).unwrap();
