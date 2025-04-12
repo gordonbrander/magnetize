@@ -17,7 +17,7 @@ Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 - `mag get <MAGNET_URL>`: fetch content addressed data over HTTP(S) using a magnet link. This command will try locations until it finds one that succeeds.
 - `mag link <URL>...`: create a magnet link from one or more HTTP(s) URLs.
 - `mag serve <DIR>`: simple file server for content addressed data. The server is written in Rust, so is reasonably fast.
-- `mag add <FILE>` - add content addressed data from a file. This command will create a new file in the current directory, whose name is the CID of the data.
+- `mag add <FILE>`: add content addressed data from a file. This command will create a new file in the working directory who's name is the CID and who's contents is the file bytes.
 
 See `mag --help` for a full list of commands and features.
 
