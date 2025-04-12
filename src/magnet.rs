@@ -11,8 +11,8 @@ pub struct MagnetLink {
     /// URLs that support HTTP GET'ing content by CID.
     /// E.g. if cdn is `https://example.com`, you can GET `https://example.com/<cid>`.
     pub cdn: Vec<String>,
-    /// Exact Source (HTTP URL for the data)
-    pub xs: Vec<String>,
+    /// Web Seed (HTTP URL for the data)
+    pub ws: Vec<String>,
     /// BitTorrent infohash
     pub xt: Option<String>,
     /// Display Name (file name hint)
@@ -40,10 +40,7 @@ impl MagnetLink {
 
         let cdn = query.get("cdn").map(|s| s.to_owned()).unwrap_or(Vec::new());
 
-        let xs = query
-            .get("xs")
-            .map(|xs| xs.to_owned())
-            .unwrap_or(Vec::new());
+        let ws = query.get("ws").map(|v| v.to_owned()).unwrap_or(Vec::new());
 
         let xt = query
             .get("xt")
@@ -58,7 +55,7 @@ impl MagnetLink {
         Ok(MagnetLink {
             cid,
             cdn,
-            xs,
+            ws,
             xt,
             dn,
         })
@@ -73,7 +70,7 @@ impl MagnetLink {
             urls.push(format!("{}/{}", url.to_owned(), cid_string));
         }
 
-        for url in self.xs.iter() {
+        for url in self.ws.iter() {
             urls.push(url.to_owned());
         }
 
@@ -92,8 +89,12 @@ impl MagnetLink {
                 .append_pair("xt", &self.xt.as_ref().unwrap_or(&"".to_string()))
                 .append_pair("dn", &self.dn.as_ref().unwrap_or(&"".to_string()));
 
-            for value in self.xs.iter() {
-                query.append_pair("xs", &value);
+            for value in self.cdn.iter() {
+                query.append_pair("cdn", value);
+            }
+
+            for value in self.ws.iter() {
+                query.append_pair("ws", value);
             }
         }
 
@@ -167,14 +168,14 @@ mod tests {
 
     #[test]
     fn test_parse_valid_magnet_link() {
-        let magnet_link = "magnet:?cid=bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4&xs=https://example.com/file.txt&xt=urn:btih:d41d8cd98f00b204e9800998ecf8427e&dn=example_file";
+        let magnet_link = "magnet:?cid=bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4&ws=https://example.com/file.txt&xt=urn:btih:d41d8cd98f00b204e9800998ecf8427e&dn=example_file";
         let result = MagnetLink::parse(magnet_link).unwrap();
 
         assert_eq!(
             result.cid.to_string(),
             "bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4"
         );
-        assert_eq!(result.xs, vec!["https://example.com/file.txt"]);
+        assert_eq!(result.ws, vec!["https://example.com/file.txt"]);
         assert_eq!(
             result.xt,
             Some("urn:btih:d41d8cd98f00b204e9800998ecf8427e".to_string())
@@ -191,24 +192,24 @@ mod tests {
             result.cid.to_string(),
             "bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4"
         );
-        assert!(result.xs.is_empty());
+        assert!(result.ws.is_empty());
         assert_eq!(result.xt, None);
         assert_eq!(result.dn, None);
     }
 
     #[test]
-    fn test_parse_multiple_xs() {
-        let magnet_link = "magnet:?cid=bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4&xs=https://example1.com/file.txt&xs=https://example2.com/file.txt";
+    fn test_parse_multiple_ws() {
+        let magnet_link = "magnet:?cid=bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4&ws=https://example1.com/file.txt&ws=https://example2.com/file.txt";
         let result = MagnetLink::parse(magnet_link).unwrap();
 
-        assert_eq!(result.xs.len(), 2);
-        assert_eq!(result.xs[0], "https://example1.com/file.txt");
-        assert_eq!(result.xs[1], "https://example2.com/file.txt");
+        assert_eq!(result.ws.len(), 2);
+        assert_eq!(result.ws[0], "https://example1.com/file.txt");
+        assert_eq!(result.ws[1], "https://example2.com/file.txt");
     }
 
     #[test]
     fn test_parse_missing_cid() {
-        let magnet_link = "magnet:?xs=https://example.com/file.txt";
+        let magnet_link = "magnet:?ws=https://example.com/file.txt";
         let result = MagnetLink::parse(magnet_link);
 
         assert!(matches!(result, Err(MagnetLinkError::MissingCid)));
@@ -227,7 +228,7 @@ mod tests {
         let magnet_link = MagnetLink {
             cid: Cid::parse("bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4").unwrap(),
             cdn: Vec::new(),
-            xs: vec!["https://example.com/file.txt".to_string()],
+            ws: vec!["https://example.com/file.txt".to_string()],
             xt: Some("urn:btih:d41d8cd98f00b204e9800998ecf8427e".to_string()),
             dn: Some("example_file".to_string()),
         };
@@ -244,7 +245,7 @@ mod tests {
         let magnet_link = MagnetLink {
             cid: Cid::parse("bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4").unwrap(),
             cdn: Vec::new(),
-            xs: vec![],
+            ws: vec![],
             xt: None,
             dn: None,
         };
@@ -261,6 +262,6 @@ mod tests {
         // Parse back to verify roundtrip conversion (although the empty fields will be None)
         let parsed = MagnetLink::parse(&url_string).unwrap();
         assert_eq!(parsed.cid, magnet_link.cid);
-        assert!(parsed.xs.is_empty());
+        assert!(parsed.ws.is_empty());
     }
 }

@@ -45,13 +45,15 @@ See `mag --help` for a full list of commands and features.
 
 Magnet links bundle together multiple ways to fetch the same data. They are frequently used for locating data on BitTorrent, but are a general-purpose protocol that can be used in various contexts. Magnetize extends magnet links, adding parameters to support content-addressed data over HTTP.
 
-Supported magnet link parameters:
+While magnet links are a de facto standard, with no formally standardized semantics,there have been [attempts to coordinate the way BitTorrent clients use parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). Magnetize tries to remain broadly compatible with these efforts.
+
+Magnet link parameters supported by Magnetize:
 
 - `cid`: the CID.
 - `cdn`: URL to a location where you can GET the data by CID. E.g. if `cdn=https://example.com/ipfs`, then you can GET `https://example.com/ipfs/<CID>`.
-- `xs`: "Exact Source". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
+- `ws`: "Web Seed". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
 - `dn`: "Display Name". A suggested file name.
-- `xt`: "Exact Topic". The BitTorrent infohash (optional).
+- `xt`: "Exact Topic". A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
 
 Note it is possible to construct a hybrid magnet link that works with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/) by including the `xt` parameter.
 
@@ -59,7 +61,7 @@ Note it is possible to construct a hybrid magnet link that works with both Magne
 magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
 ```
 
-This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable. This approach essentially farms out open-ended discovery to BitTorrent's mainline DHT, which is already widely distributed and proven at scale. You can think of the `xs` and `cdn` parameters as high availability peers to try first, while ultimately allowing fallback on BitTorrent if they go down or are censored.
+This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable. When used with BitTorrent, you can think of the `ws` and `cdn` parameters as high availability peers you can try first, while falling back to BitTorrent's DHT if they go down.
 
 > TODO see if we can bundle a Torrent client into `mag get`.
 
