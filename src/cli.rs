@@ -19,9 +19,10 @@ pub enum Commands {
         url: String,
     },
 
+    #[command(about = "Create a magnet link from one or more HTTP URLs")]
     Link {
         #[arg(
-            help = "Create a magnet link from one or more HTTP URLs. Fetches the content, generates a CID, and returns the magnet link."
+            long_help = "Create a magnet link from one or more HTTP URLs. Fetches the content, generates a CID, and returns the magnet link."
         )]
         #[arg(value_name = "URL")]
         url: Vec<String>,
@@ -49,5 +50,11 @@ pub enum Commands {
         #[arg(help = "Allow file uploads via POST?")]
         #[arg(short = 'p', long = "post")]
         post: bool,
+
+        #[arg(
+            long_help = "URLs of other CDNs to federate with. Server will fall back to asking these CDNs if it doesn't have a CID, then will store and forward the first successful response."
+        )]
+        #[arg(long = "feds")]
+        feds: Vec<String>,
     },
 }

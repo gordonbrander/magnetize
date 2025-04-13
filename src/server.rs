@@ -6,15 +6,52 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use std::io::Write;
-use std::path::PathBuf;
+use rand::rng;
+use rand::seq::SliceRandom;
+use std::path::{self, PathBuf};
+use std::{fs, io::Write};
 use tokio::{fs::File, io::AsyncReadExt};
 
 #[derive(Clone)]
 pub struct ServerState {
+    /// The address the server should listen on
     pub address: String,
+    /// The directory where content-addressed files will be stored
     pub file_storage_dir: PathBuf,
+    /// A list of other CDNs to federate with
+    pub feds: Vec<String>,
     pub allow_post: bool,
+}
+
+#[derive(Debug)]
+pub enum ServerError {
+    IoError(std::io::Error),
+    RequestError(reqwest::Error),
+    FileNotFound,
+}
+
+impl std::fmt::Display for ServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerError::RequestError(err) => write!(f, "RequestError({})", err),
+            ServerError::IoError(err) => write!(f, "IoError({})", err),
+            ServerError::FileNotFound => write!(f, "File not found"),
+        }
+    }
+}
+
+impl std::error::Error for ServerError {}
+
+impl From<reqwest::Error> for ServerError {
+    fn from(err: reqwest::Error) -> Self {
+        ServerError::RequestError(err)
+    }
+}
+
+impl From<std::io::Error> for ServerError {
+    fn from(err: std::io::Error) -> Self {
+        ServerError::IoError(err)
+    }
 }
 
 /// Multithread server (number of threads = number of CPUs)
@@ -50,19 +87,57 @@ async fn get_index() -> Response {
 
 // Handler for GET /CID
 async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
-    let path = PathBuf::from(state.file_storage_dir).join(&filename);
+    match read_or_get_then_store_and_forward(&state.feds, &state.file_storage_dir, &filename).await
+    {
+        Ok(contents) => (StatusCode::OK, contents).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "File not found ").into_response(),
+    }
+}
 
+/// Read file from storage, if it exists, otherwise, request it from feds, store it, and forward.
+/// Tries each of the feds in order, returning the first successful response.
+async fn read_or_get_then_store_and_forward(
+    feds: &[String],
+    dir: &path::Path,
+    filename: &str,
+) -> Result<Vec<u8>, ServerError> {
+    let path = dir.join(filename);
     match File::open(&path).await {
         Ok(mut file) => {
             let mut contents = Vec::new();
-            if let Err(_) = file.read_to_end(&mut contents).await {
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file").into_response();
+            file.read_to_end(&mut contents).await?;
+            return Ok(contents);
+        }
+        Err(_) => {
+            // Randomize the order of the feds to avoid overloading any one fed.
+            let mut shuffled_feds = feds.to_vec();
+
+            if !shuffled_feds.is_empty() {
+                shuffled_feds.shuffle(&mut rng());
             }
 
-            (StatusCode::OK, contents).into_response()
+            for fed in shuffled_feds {
+                let url = format!("{}/{}", fed, filename);
+                if let Ok(contents) = get_then_store_and_forward(&url, dir, filename).await {
+                    return Ok(contents);
+                }
+            }
+            Err(ServerError::FileNotFound)
         }
-        Err(_) => (StatusCode::NOT_FOUND, "File not found").into_response(),
     }
+}
+
+/// Fetches a file from a URL and stores it in a directory, returning its bytes
+async fn get_then_store_and_forward(
+    url: &str,
+    dir: &path::Path,
+    filename: &str,
+) -> Result<Vec<u8>, ServerError> {
+    let response = reqwest::get(url).await?;
+    let bytes = response.bytes().await?;
+    let path = dir.join(filename);
+    fs::write(path, &bytes)?;
+    Ok(bytes.to_vec())
 }
 
 // Handler for POST /

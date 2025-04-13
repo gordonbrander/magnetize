@@ -39,11 +39,12 @@ See `mag --help` for a full list of commands and features.
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] POST content to server
-  - [x] Option to turn of POST
+  - [x] Option to turn off POST
+  - [x] Store-and-forward federation
+  - [ ] Pull federation (sync)
   - [ ] Option to require secret to POST
   - [ ] Option to encrypt content ala Magenc
-  - [ ] Simple federation using a text file containing a list of known CDNs (and maybe BitTorrent)
-- [ ] JS library for parsing/fetching magnetized links
+  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links
 

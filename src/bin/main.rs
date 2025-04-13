@@ -18,11 +18,17 @@ fn main() {
         Commands::Link { url } => {
             cmd_link(url);
         }
-        Commands::Serve { dir, addr, post } => {
+        Commands::Serve {
+            dir,
+            addr,
+            post,
+            feds,
+        } => {
             serve(ServerState {
                 address: addr,
                 file_storage_dir: dir,
                 allow_post: post,
+                feds,
             });
         }
     }
