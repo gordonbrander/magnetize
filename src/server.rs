@@ -2,11 +2,12 @@ use crate::cid::Cid;
 use crate::request;
 use axum::{
     Router,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
+use serde::Deserialize;
 use std::{fs, io::Write};
 use std::{path::PathBuf, time::Duration};
 
@@ -96,8 +97,17 @@ async fn get_index() -> Response {
     (StatusCode::OK, "GET /{CID}").into_response()
 }
 
+#[derive(Deserialize)]
+struct GetCidParams {
+    dn: Option<String>,
+}
+
 // Handler for GET /CID
-async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+async fn get_file(
+    State(state): State<ServerState>,
+    Path(filename): Path<String>,
+    query: Query<GetCidParams>,
+) -> Response {
     // Only allow GET requests for valid CIDs
     let Ok(cid) = Cid::parse(&filename) else {
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
@@ -110,6 +120,11 @@ async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>
     // See <https://www.ietf.org/archive/id/draft-ietf-httpbis-digest-headers-08.html>
     match fs::read(&file_path) {
         Ok(contents) => {
+            let content_disposition = match query.dn {
+                Some(ref dn) => format!("attachment; filename=\"{}\"", dn),
+                None => format!("attachment"),
+            };
+
             return (
                 StatusCode::OK,
                 [
@@ -118,7 +133,7 @@ async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>
                         format!("cid=:{}:", cid.to_string()).as_str(),
                     ),
                     ("content-type", "application/octet-stream"),
-                    ("content-disposition", "attachment"),
+                    ("content-disposition", &content_disposition),
                     ("content-length", contents.len().to_string().as_str()),
                 ],
                 contents,

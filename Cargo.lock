@@ -816,6 +816,7 @@ dependencies = [
  "data-encoding",
  "rand",
  "reqwest",
+ "serde",
  "sha2",
  "tokio",
  "url",
