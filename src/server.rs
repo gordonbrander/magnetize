@@ -1,9 +1,10 @@
 use crate::cid::Cid;
 use crate::request;
+use crate::url::Url;
 use axum::{
     Router,
     extract::{Multipart, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
@@ -18,6 +19,7 @@ pub struct ServerState {
     /// The directory where content-addressed files will be stored
     pub file_storage_dir: PathBuf,
     pub allow_post: bool,
+    pub feds: Vec<Url>,
     pub client: reqwest::Client,
 }
 
@@ -29,6 +31,7 @@ impl ServerState {
             address,
             file_storage_dir,
             allow_post,
+            feds: Vec::new(),
             client,
         }
     }
@@ -76,8 +79,9 @@ pub async fn serve(state: ServerState) {
     let app = Router::new()
         .route("/", get(get_index))
         .route("/", post(post_file))
-        .route("/{filename}", get(get_file))
-        .route("/{filename}", head(head_file))
+        .route("/notify", post(post_notify))
+        .route("/{cid}", get(get_cid))
+        .route("/{cid}", head(head_cid))
         .with_state(state.clone());
 
     // Run the server
@@ -103,13 +107,13 @@ struct GetCidParams {
 }
 
 // Handler for GET /CID
-async fn get_file(
+async fn get_cid(
     State(state): State<ServerState>,
-    Path(filename): Path<String>,
+    Path(cid): Path<String>,
     query: Query<GetCidParams>,
 ) -> Response {
     // Only allow GET requests for valid CIDs
-    let Ok(cid) = Cid::parse(&filename) else {
+    let Ok(cid) = Cid::parse(&cid) else {
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
@@ -147,9 +151,9 @@ async fn get_file(
 }
 
 // Handler for HEAD /CID
-async fn head_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> Response {
     // Only allow GET requests for valid CIDs
-    let Ok(cid) = Cid::parse(&filename) else {
+    let Ok(cid) = Cid::parse(&cid) else {
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
@@ -160,6 +164,55 @@ async fn head_file(State(state): State<ServerState>, Path(filename): Path<String
     } else {
         (StatusCode::NOT_FOUND, "File not found").into_response()
     }
+}
+
+async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    // Get CID from request header
+    let origin = match headers
+        .get("origin")
+        .and_then(|s| s.to_str().ok())
+        .and_then(|s| Url::parse(s).ok())
+    {
+        Some(origin) => origin,
+        None => return (StatusCode::BAD_REQUEST, "Origin missing or invalid").into_response(),
+    };
+
+    let cid = match headers
+        .get("cid")
+        .and_then(|s| s.to_str().ok())
+        .and_then(|s| Cid::parse(s).ok())
+    {
+        Some(cid) => cid,
+        None => return (StatusCode::BAD_REQUEST, "CID header missing or invalid").into_response(),
+    };
+
+    let file_path = state.file_storage_dir.join(&cid.to_string());
+
+    // Exit early if we already know about this CID
+    if file_path.exists() {
+        return (StatusCode::OK, "").into_response();
+    }
+
+    let Ok(url) = origin.join(&cid.to_string()) else {
+        return (StatusCode::BAD_REQUEST, "Invalid URL").into_response();
+    };
+
+    // Fetch the file from the origin
+    let Ok(body) = request::get_cid(&state.client, &url, &cid).await else {
+        return (StatusCode::BAD_REQUEST, format!("CID not found {}", &cid)).into_response();
+    };
+
+    // Write bytes to file
+    let Ok(_) = std::fs::write(&file_path, body) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to create resource",
+        )
+            .into_response();
+    };
+
+    // Return the CID
+    (StatusCode::CREATED, cid.to_string()).into_response()
 }
 
 // Handler for POST /
