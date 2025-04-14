@@ -1,5 +1,6 @@
 use data_encoding;
 use sha2::{Digest, Sha256};
+use std::io::{self, Read};
 use std::result;
 
 const CID_VERSION: u8 = 0x01;
@@ -13,12 +14,7 @@ const MULTIHASH_SHA256: u8 = 0x12;
 pub struct Cid([u8; 32]);
 
 impl Cid {
-    /// Create a CIDv1 from the bytes of a SHA-256 hash
-    pub fn from_sha256(sha256_hash: [u8; 32]) -> Self {
-        Self(sha256_hash)
-    }
-
-    /// Construct a CIDv1 from bytes representing a CIDv1
+    /// Parse a CIDv1 from bytes representing a CIDv1
     pub fn parse_bytes(cid_bytes: Vec<u8>) -> result::Result<Self, CidError> {
         if cid_bytes.len() != 36 {
             return Err(CidError::ValueError("Invalid CID length".to_string()));
@@ -66,7 +62,21 @@ impl Cid {
             .as_slice()
             .try_into()
             .expect("SHA256 hash should be 32 bytes");
-        Self::from_sha256(sha256_hash_array)
+        Self(sha256_hash_array)
+    }
+
+    /// Create a CIDv1 by streaming-reading and streaming-hashing bytes from a reader
+    pub fn read<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut hasher = Sha256::new();
+        // Streaming hash the bytes from the reader.
+        // (Sha256 supports the Write trait)
+        io::copy(reader, &mut hasher)?;
+        let digest = hasher.finalize();
+        let hash_array: [u8; 32] = digest
+            .as_slice()
+            .try_into()
+            .expect("SHA256 hash should be 32 bytes");
+        Ok(Self(hash_array))
     }
 
     /// Get the byte representation of a valid CIDv1
@@ -146,6 +156,7 @@ impl From<data_encoding::DecodeError> for CidError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn test_cid_to_bytes_constructs_a_valid_cid() {
@@ -188,5 +199,20 @@ mod tests {
         // Check that identical inputs create the same CID
         assert_eq!(cid1.0, cid2.0);
         assert_eq!(cid1.to_string(), cid2.to_string());
+    }
+
+    #[test]
+    fn test_cid_read_from_reader() {
+        let data = b"test data";
+        let mut reader = Cursor::new(data);
+
+        let cid = Cid::read(&mut reader).unwrap().to_bytes();
+
+        // Verify the structure is correct
+        assert_eq!(cid[0], CID_VERSION);
+        assert_eq!(cid[1], MULTICODEC_RAW);
+        assert_eq!(cid[2], MULTIHASH_SHA256);
+        assert_eq!(cid[3], 32);
+        assert_eq!(cid.len(), 36);
     }
 }
