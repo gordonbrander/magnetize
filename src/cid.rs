@@ -10,11 +10,11 @@ const MULTIHASH_SHA256: u8 = 0x12;
 /// The struct itself holds only the SHA-256 hash bytes.
 /// To get a CIDV1 bytes representation, use the `to_cid_bytes` method.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Cid(Vec<u8>);
+pub struct Cid([u8; 32]);
 
 impl Cid {
     /// Create a CIDv1 from the bytes of a SHA-256 hash
-    pub fn from_sha256(sha256_hash: Vec<u8>) -> Self {
+    pub fn from_sha256(sha256_hash: [u8; 32]) -> Self {
         Self(sha256_hash)
     }
 
@@ -37,7 +37,10 @@ impl Cid {
             return Err(CidError::ValueError("Invalid CID format".to_string()));
         }
 
-        let hash = cid_bytes[4..].to_vec();
+        // Create a fixed-size array from the hash slice
+        let mut hash = [0u8; 32];
+        // Copy bytes 4 to 36 to fill the hash array
+        hash.copy_from_slice(&cid_bytes[4..36]);
         Ok(Self(hash))
     }
 
@@ -59,7 +62,11 @@ impl Cid {
     /// Create a CIDv1 by hashing raw bytes
     pub fn of(bytes: impl AsRef<[u8]>) -> Self {
         let sha256_hash = Sha256::digest(bytes.as_ref());
-        Self::from_sha256(sha256_hash.to_vec())
+        let sha256_hash_array: [u8; 32] = sha256_hash
+            .as_slice()
+            .try_into()
+            .expect("SHA256 hash should be 32 bytes");
+        Self::from_sha256(sha256_hash_array)
     }
 
     /// Get the byte representation of a valid CIDv1

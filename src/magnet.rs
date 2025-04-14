@@ -1,8 +1,7 @@
-use crate::cid::{self, Cid};
+use crate::cid::{Cid, CidError};
+use crate::url::Url;
 use crate::util::group;
-use reqwest;
 use std::result;
-use url::{self, Url};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MagnetLink {
@@ -10,9 +9,9 @@ pub struct MagnetLink {
     pub cid: Cid,
     /// URLs that support HTTP GET'ing content by CID.
     /// E.g. if cdn is `https://example.com`, you can GET `https://example.com/<cid>`.
-    pub cdn: Vec<String>,
+    pub cdn: Vec<Url>,
     /// Web Seed (HTTP URL for the data)
-    pub ws: Vec<String>,
+    pub ws: Vec<Url>,
     /// BitTorrent infohash
     pub xt: Option<String>,
     /// Display Name (file name hint)
@@ -38,9 +37,15 @@ impl MagnetLink {
 
         let cid = Cid::parse(cid_string)?;
 
-        let cdn = query.get("cdn").map(|s| s.to_owned()).unwrap_or(Vec::new());
+        let cdn = query
+            .get("cdn")
+            .map(|v| v.into_iter().filter_map(|s| Url::parse(s).ok()).collect())
+            .unwrap_or(Vec::new());
 
-        let ws = query.get("ws").map(|v| v.to_owned()).unwrap_or(Vec::new());
+        let ws = query
+            .get("ws")
+            .map(|v| v.into_iter().filter_map(|s| Url::parse(s).ok()).collect())
+            .unwrap_or(Vec::new());
 
         let xt = query
             .get("xt")
@@ -62,19 +67,11 @@ impl MagnetLink {
     }
 
     /// Returns a vec of all the URLS that you can hit to download the file.
-    pub fn urls(&self) -> Vec<String> {
+    pub fn urls(&self) -> Vec<Url> {
         let cid_string = self.cid.to_string();
-        let mut urls = Vec::new();
-
-        for url in self.cdn.iter() {
-            urls.push(format!("{}/{}", url.to_owned(), cid_string));
-        }
-
-        for url in self.ws.iter() {
-            urls.push(url.to_owned());
-        }
-
-        urls
+        let cdn_urls = self.cdn.iter().filter_map(|url| url.join(&cid_string).ok());
+        let ws_urls = self.ws.clone().into_iter();
+        cdn_urls.chain(ws_urls).collect()
     }
 
     /// Converts the magnet link to URL string representation.
@@ -95,11 +92,11 @@ impl MagnetLink {
             }
 
             for value in self.cdn.iter() {
-                query.append_pair("cdn", value);
+                query.append_pair("cdn", value.as_str());
             }
 
             for value in self.ws.iter() {
-                query.append_pair("ws", value);
+                query.append_pair("ws", value.as_str());
             }
         }
 
@@ -110,7 +107,7 @@ impl MagnetLink {
 #[derive(Debug)]
 pub enum MagnetLinkError {
     UrlParseError(url::ParseError),
-    CidError(cid::CidError),
+    CidError(CidError),
     MissingCid,
 }
 
@@ -132,39 +129,10 @@ impl From<url::ParseError> for MagnetLinkError {
     }
 }
 
-impl From<cid::CidError> for MagnetLinkError {
-    fn from(err: cid::CidError) -> Self {
+impl From<CidError> for MagnetLinkError {
+    fn from(err: CidError) -> Self {
         MagnetLinkError::CidError(err)
     }
-}
-
-/// Get data via magnet link, blocking the current thread until the data is retrieved.
-pub fn get_blocking(mag: &MagnetLink) -> Option<Vec<u8>> {
-    for url in mag.urls() {
-        match reqwest::blocking::get(url) {
-            Ok(response) => {
-                let body = match response.bytes() {
-                    Ok(bytes) => bytes,
-                    Err(_) => {
-                        continue;
-                    }
-                };
-                let cid = Cid::of(&body);
-
-                // Check data integrity via cid
-                if mag.cid != cid {
-                    continue;
-                }
-
-                // Return the first successful response
-                return Some(body.to_vec());
-            }
-            Err(_) => {
-                continue;
-            }
-        };
-    }
-    None
 }
 
 #[cfg(test)]
@@ -180,7 +148,10 @@ mod tests {
             result.cid.to_string(),
             "bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4"
         );
-        assert_eq!(result.ws, vec!["https://example.com/file.txt"]);
+        assert_eq!(
+            result.ws,
+            vec![Url::parse("https://example.com/file.txt").unwrap()]
+        );
         assert_eq!(
             result.xt,
             Some("urn:btih:d41d8cd98f00b204e9800998ecf8427e".to_string())
@@ -208,8 +179,14 @@ mod tests {
         let result = MagnetLink::parse(magnet_link).unwrap();
 
         assert_eq!(result.ws.len(), 2);
-        assert_eq!(result.ws[0], "https://example1.com/file.txt");
-        assert_eq!(result.ws[1], "https://example2.com/file.txt");
+        assert_eq!(
+            result.ws[0],
+            Url::parse("https://example1.com/file.txt").unwrap()
+        );
+        assert_eq!(
+            result.ws[1],
+            Url::parse("https://example2.com/file.txt").unwrap()
+        );
     }
 
     #[test]
@@ -233,7 +210,7 @@ mod tests {
         let magnet_link = MagnetLink {
             cid: Cid::parse("bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4").unwrap(),
             cdn: Vec::new(),
-            ws: vec!["https://example.com/file.txt".to_string()],
+            ws: vec![Url::parse("https://example.com/file.txt").unwrap()],
             xt: Some("urn:btih:d41d8cd98f00b204e9800998ecf8427e".to_string()),
             dn: Some("example_file".to_string()),
         };

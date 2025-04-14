@@ -33,18 +33,16 @@ See `mag --help` for a full list of commands and features.
   - [x] Fetch magnet using http
   - [ ] Fetch magnet using BitTorrent
 - [x] `add` - add content-addressed data to directory
-- [ ] `mirror` - fetch content from URL/CDN and add it to directory
-  - [ ] Fetch single CID
-  - [ ] Federate with another mirror
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
+  - [x] Store-and-forward federation
+  - [ ] Simple gossip-based federation
   - [x] POST content to server
   - [x] Option to turn off POST
-  - [x] Store-and-forward federation
-  - [ ] Pull federation (sync)
   - [ ] Option to require secret to POST
   - [ ] Option to encrypt content ala Magenc
-  [ ] JS library for parsing/fetching magnetized links
+  - [ ] Logging
+-  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links
 

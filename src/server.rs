@@ -1,16 +1,14 @@
 use crate::cid::Cid;
+use crate::request;
 use axum::{
     Router,
     extract::{Multipart, Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, head, post},
 };
-use rand::rng;
-use rand::seq::SliceRandom;
-use std::path::{self, PathBuf};
 use std::{fs, io::Write};
-use tokio::{fs::File, io::AsyncReadExt};
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -18,9 +16,21 @@ pub struct ServerState {
     pub address: String,
     /// The directory where content-addressed files will be stored
     pub file_storage_dir: PathBuf,
-    /// A list of other CDNs to federate with
-    pub feds: Vec<String>,
     pub allow_post: bool,
+    pub client: reqwest::Client,
+}
+
+impl ServerState {
+    pub fn new(address: String, file_storage_dir: PathBuf, allow_post: bool) -> Self {
+        let client =
+            request::build_client(Duration::from_secs(2)).expect("Could not create HTTP client");
+        ServerState {
+            address,
+            file_storage_dir,
+            allow_post,
+            client,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -66,6 +76,7 @@ pub async fn serve(state: ServerState) {
         .route("/", get(get_index))
         .route("/", post(post_file))
         .route("/{filename}", get(get_file))
+        .route("/{filename}", head(head_file))
         .with_state(state.clone());
 
     // Run the server
@@ -87,57 +98,53 @@ async fn get_index() -> Response {
 
 // Handler for GET /CID
 async fn get_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
-    match read_or_get_then_store_and_forward(&state.feds, &state.file_storage_dir, &filename).await
-    {
-        Ok(contents) => (StatusCode::OK, contents).into_response(),
-        Err(_) => (StatusCode::NOT_FOUND, "File not found ").into_response(),
-    }
-}
+    // Only allow GET requests for valid CIDs
+    let Ok(cid) = Cid::parse(&filename) else {
+        return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
+    };
 
-/// Read file from storage, if it exists, otherwise, request it from feds, store it, and forward.
-/// Tries each of the feds in order, returning the first successful response.
-async fn read_or_get_then_store_and_forward(
-    feds: &[String],
-    dir: &path::Path,
-    filename: &str,
-) -> Result<Vec<u8>, ServerError> {
-    let path = dir.join(filename);
-    match File::open(&path).await {
-        Ok(mut file) => {
-            let mut contents = Vec::new();
-            file.read_to_end(&mut contents).await?;
-            return Ok(contents);
+    let file_path = state.file_storage_dir.join(&cid.to_string());
+
+    // Read and return file contents if it exists
+    // Include content-digest header.
+    // See <https://www.ietf.org/archive/id/draft-ietf-httpbis-digest-headers-08.html>
+    match fs::read(&file_path) {
+        Ok(contents) => {
+            return (
+                StatusCode::OK,
+                [
+                    (
+                        "content-digest",
+                        format!("cid=:{}:", cid.to_string()).as_str(),
+                    ),
+                    ("content-type", "application/octet-stream"),
+                    ("content-disposition", "attachment"),
+                    ("content-length", contents.len().to_string().as_str()),
+                ],
+                contents,
+            )
+                .into_response();
         }
         Err(_) => {
-            // Randomize the order of the feds to avoid overloading any one fed.
-            let mut shuffled_feds = feds.to_vec();
-
-            if !shuffled_feds.is_empty() {
-                shuffled_feds.shuffle(&mut rng());
-            }
-
-            for fed in shuffled_feds {
-                let url = format!("{}/{}", fed, filename);
-                if let Ok(contents) = get_then_store_and_forward(&url, dir, filename).await {
-                    return Ok(contents);
-                }
-            }
-            Err(ServerError::FileNotFound)
+            return (StatusCode::NOT_FOUND, "File not found").into_response();
         }
     }
 }
 
-/// Fetches a file from a URL and stores it in a directory, returning its bytes
-async fn get_then_store_and_forward(
-    url: &str,
-    dir: &path::Path,
-    filename: &str,
-) -> Result<Vec<u8>, ServerError> {
-    let response = reqwest::get(url).await?;
-    let bytes = response.bytes().await?;
-    let path = dir.join(filename);
-    fs::write(path, &bytes)?;
-    Ok(bytes.to_vec())
+// Handler for HEAD /CID
+async fn head_file(State(state): State<ServerState>, Path(filename): Path<String>) -> Response {
+    // Only allow GET requests for valid CIDs
+    let Ok(cid) = Cid::parse(&filename) else {
+        return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
+    };
+
+    let file_path = state.file_storage_dir.join(&cid.to_string());
+
+    if file_path.exists() {
+        (StatusCode::OK, "").into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "File not found").into_response()
+    }
 }
 
 // Handler for POST /

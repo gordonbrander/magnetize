@@ -50,11 +50,5 @@ pub enum Commands {
         #[arg(help = "Allow file uploads via POST?")]
         #[arg(short = 'p', long = "post")]
         post: bool,
-
-        #[arg(
-            long_help = "URLs of other CDNs to federate with. Server will fall back to asking these CDNs if it doesn't have a CID, then will store and forward the first successful response."
-        )]
-        #[arg(long = "feds")]
-        feds: Vec<String>,
     },
 }
