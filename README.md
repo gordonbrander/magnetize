@@ -41,7 +41,7 @@ See `mag --help` for a full list of commands and features.
   - [x] Option to turn off POST
   - [ ] Option to require secret to POST
   - [ ] Option to encrypt content ala Magenc
-  - [ ] Logging
+  - [x] Logging (tracing)
 -  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links
