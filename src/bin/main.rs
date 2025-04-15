@@ -1,11 +1,12 @@
 use magnetize::cid::Cid;
 use magnetize::cli::{Cli, Commands, Parser};
 use magnetize::magnet::MagnetLink;
+use magnetize::peers::read_peers;
 use magnetize::request::get_cid;
 use magnetize::server::{ServerState, serve};
 use magnetize::url::Url;
 use std::collections::HashSet;
-use std::fs;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use tokio::runtime;
@@ -20,8 +21,20 @@ fn main() {
         Commands::Link { url } => {
             cmd_link(url);
         }
-        Commands::Serve { dir, addr, post } => {
-            let state = ServerState::new(addr, dir, post);
+        Commands::Serve {
+            dir,
+            addr,
+            post,
+            peers,
+        } => {
+            let peers = match peers {
+                Some(path) => {
+                    let file = File::open(path).expect("Unable to open peers file");
+                    read_peers(file).expect("Malformed peer URL")
+                }
+                None => Vec::new(),
+            };
+            let state = ServerState::new(addr, dir, peers, post);
             serve(state);
         }
     }

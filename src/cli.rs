@@ -50,5 +50,10 @@ pub enum Commands {
         #[arg(help = "Allow file uploads via POST?")]
         #[arg(short = 'p', long = "post")]
         post: bool,
+
+        #[arg(
+            help = "Peers to gossip with. Reads peers from a file containing line-delimited URLs"
+        )]
+        peers: Option<PathBuf>,
     },
 }

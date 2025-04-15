@@ -21,19 +21,24 @@ pub struct ServerState {
     /// The directory where content-addressed files will be stored
     pub file_storage_dir: PathBuf,
     pub allow_post: bool,
-    pub feds: Vec<Url>,
+    pub peers: Vec<Url>,
     pub client: reqwest::Client,
 }
 
 impl ServerState {
-    pub fn new(address: String, file_storage_dir: PathBuf, allow_post: bool) -> Self {
+    pub fn new(
+        address: String,
+        file_storage_dir: PathBuf,
+        peers: Vec<Url>,
+        allow_post: bool,
+    ) -> Self {
         let client =
             request::build_client(Duration::from_secs(2)).expect("Could not create HTTP client");
         ServerState {
             address,
             file_storage_dir,
             allow_post,
-            feds: Vec::new(),
+            peers,
             client,
         }
     }
