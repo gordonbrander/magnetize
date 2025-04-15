@@ -22,4 +22,7 @@ tokio = { version = "1.44.2", features = [
     "rt",
     "rt-multi-thread",
 ] }
+tower-http = { version = "0.6.2", features = ["trace"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 url = { version = "2.5.4", features = [] }

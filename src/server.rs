@@ -11,6 +11,8 @@ use axum::{
 use serde::Deserialize;
 use std::{fs, io::Write};
 use std::{path::PathBuf, time::Duration};
+use tower_http::trace::{self, TraceLayer};
+use tracing::Level;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -75,6 +77,12 @@ pub async fn serve(state: ServerState) {
     std::fs::create_dir_all(&state.file_storage_dir)
         .expect("Unable to create file storage directory");
 
+    // Setup tracing (logs)
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .compact()
+        .init();
+
     // Build our application with routes
     let app = Router::new()
         .route("/", get(get_index))
@@ -82,6 +90,11 @@ pub async fn serve(state: ServerState) {
         .route("/notify", post(post_notify))
         .route("/{cid}", get(get_cid))
         .route("/{cid}", head(head_cid))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(state.clone());
 
     // Run the server
@@ -89,7 +102,7 @@ pub async fn serve(state: ServerState) {
         .await
         .expect("Unable to bind server to address");
 
-    println!("Server listening on {}", &state.address);
+    tracing::info!("listening on {}", &state.address);
 
     axum::serve(listener, app)
         .await
