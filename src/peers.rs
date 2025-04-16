@@ -1,4 +1,5 @@
 use crate::url::Url;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::Path;
@@ -37,6 +38,28 @@ pub fn read_valid_urls_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Url>, io
         })
         .collect();
     Ok(urls)
+}
+
+/// Should we listen to notifications about this peer?
+/// - Deny list is always honored
+/// - Otherwise, notifications are restricted to allow list unless allow_all is true
+pub fn should_allow_peer(
+    peer: &Url,
+    allow: &HashSet<url::Origin>,
+    deny: &HashSet<url::Origin>,
+    allow_all: bool,
+) -> bool {
+    let peer_origin = peer.origin();
+    // Always honor deny list
+    if deny.contains(&peer_origin) {
+        return false;
+    }
+    // If peer is not in the deny list, and we allow all, return true
+    if allow_all {
+        return true;
+    }
+    // Otherwise check against allow list
+    allow.contains(&peer_origin)
 }
 
 #[derive(Debug)]
@@ -121,5 +144,52 @@ mod tests {
 
         let result = String::from_utf8(output).unwrap();
         assert_eq!(result, "http://example.com/\nhttps://test.org/\n");
+    }
+
+    #[test]
+    fn test_should_allow_peer() {
+        let peer = Url::parse("https://example.com/resource").unwrap();
+        let peer2 = Url::parse("https://allowed.com/resource").unwrap();
+        let peer3 = Url::parse("https://denied.com/resource").unwrap();
+
+        let allow = HashSet::from_iter(vec![
+            url::Url::parse("https://allowed.com").unwrap().origin(),
+        ]);
+
+        let deny = HashSet::from_iter(vec![
+            url::Url::parse("https://denied.com").unwrap().origin(),
+        ]);
+
+        // Test with allow_all = true
+        assert!(
+            should_allow_peer(&peer, &allow, &deny, true),
+            "When allow_all is true, non-denied peer should be notified"
+        );
+
+        assert!(
+            should_allow_peer(&peer2, &allow, &deny, true),
+            "When allow_all is true, allowed peer should be notified"
+        );
+
+        assert!(
+            !should_allow_peer(&peer3, &allow, &deny, true),
+            "When allow_all is true, denied peer should not be notified"
+        );
+
+        // Test with allow_all = false
+        assert!(
+            !should_allow_peer(&peer, &allow, &deny, false),
+            "When allow_all is false, non-allowed peer should not be notified"
+        );
+
+        assert!(
+            should_allow_peer(&peer2, &allow, &deny, false),
+            "When allow_all is false, allowed peer should be notified"
+        );
+
+        assert!(
+            !should_allow_peer(&peer3, &allow, &deny, false),
+            "When allow_all is false, denied peer should not be notified"
+        );
     }
 }
