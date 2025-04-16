@@ -1,12 +1,12 @@
 use magnetize::cid::Cid;
 use magnetize::cli::{Cli, Commands, Parser};
 use magnetize::magnet::MagnetLink;
-use magnetize::peers::read_peers;
+use magnetize::peers::read_valid_urls_from_file;
 use magnetize::request::get_cid;
 use magnetize::server::{ServerConfig, serve};
 use magnetize::url::Url;
 use std::collections::HashSet;
-use std::fs::{self, File};
+use std::fs::{self};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use tokio::runtime;
@@ -25,23 +25,24 @@ fn main() {
             dir,
             addr,
             post,
-            peers,
-            peering,
+            notify,
+            allow,
+            deny,
+            allow_all,
         } => {
-            let peers = match peers {
-                Some(path) => {
-                    let file = File::open(path).expect("Unable to open peers file");
-                    read_peers(file).expect("Malformed peer URL")
-                }
-                None => Vec::new(),
-            };
-            serve(ServerConfig {
-                addr,
-                dir,
-                peers,
-                peering,
-                allow_post: post,
+            let notify = notify.map_or(Vec::new(), |path| {
+                read_valid_urls_from_file(path).expect("Unable to read notify file")
             });
+            let allow = allow.map_or(Vec::new(), |path| {
+                read_valid_urls_from_file(path).expect("Unable to read allow file")
+            });
+            let deny = deny.map_or(Vec::new(), |path| {
+                read_valid_urls_from_file(path).expect("Unable to read deny file")
+            });
+
+            serve(ServerConfig::new(
+                addr, dir, post, allow_all, notify, allow, deny,
+            ));
         }
     }
 }

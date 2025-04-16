@@ -60,28 +60,26 @@ pub enum Commands {
 
         #[arg(
             long,
-            help = "Peers to gossip with. Reads peers from a file containing line-delimited URLs."
+            help = "Peers to send federation notifications to. File should contain line-delimited URLs."
         )]
-        peers: Option<PathBuf>,
+        notify: Option<PathBuf>,
 
         #[arg(
             long,
-            value_enum,
-            help = "Peering mode. Who to receive federated writes from?"
+            help = "Peers to allow federation notifications from. Notifications about peers in this list will be ignored. File should contain line-delimited URLs."
         )]
-        peering: Option<Peering>,
-    },
-}
+        deny: Option<PathBuf>,
 
-#[derive(Debug, clap::ValueEnum, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Peering {
-    #[default]
-    #[value(
-        name = "trusted",
-        help = "Federate with trusted peers only. Use peers list both as a list to notify, and as an allow-list for who you will federate with."
-    )]
-    Trusted,
-    #[value(name = "all", help = "Federate with any and all peers")]
-    All,
+        #[arg(
+            long,
+            help = "Peers to allow federation notifications from. Notifications about peers that are not in this list will be ignored. File should contain line-delimited URLs."
+        )]
+        allow: Option<PathBuf>,
+
+        #[arg(
+            long,
+            help = "Allow federation from any peer? This flag overrides the allow list. However, peers in the deny list will still be ignored."
+        )]
+        allow_all: bool,
+    },
 }
