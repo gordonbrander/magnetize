@@ -42,8 +42,11 @@ See `mag --help` for a full list of commands and features.
   - [ ] Option to encrypt content ala Magenc
   - [x] Logging (tracing)
 - [ ] Simple gossip-based federation
-  - [ ] Select n random peers and gossip updates to them
-  - [ ] Configurable CID deny list
+  - [x] Select n random peers and gossip updates to them
+  - [x] Configurable list of peers to notify
+  - [x] Configurable peer deny list
+  - [x] Configurable peer allow list
+  - [ ] Configurable CID block list
 -  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links
