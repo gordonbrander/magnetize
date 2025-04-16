@@ -26,6 +26,7 @@ fn main() {
             addr,
             post,
             peers,
+            peering,
         } => {
             let peers = match peers {
                 Some(path) => {
@@ -38,6 +39,7 @@ fn main() {
                 addr,
                 dir,
                 peers,
+                peering,
                 allow_post: post,
             });
         }

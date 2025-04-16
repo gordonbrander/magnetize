@@ -1,4 +1,5 @@
 use crate::cid::Cid;
+use crate::cli::Peering;
 use crate::request::{self, Client};
 use crate::url::Url;
 use crate::util::random_choice;
@@ -30,6 +31,7 @@ pub struct ServerConfig {
     pub dir: PathBuf,
     pub allow_post: bool,
     pub peers: Vec<Url>,
+    pub peering: Option<Peering>,
 }
 
 #[derive(Clone)]

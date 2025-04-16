@@ -1,16 +1,17 @@
 pub use clap::Parser;
 use clap::Subcommand;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "Magenc")]
-#[command(about = "Decentralize HTTP somewhat")]
+#[command(name = "Magnetize")]
+#[command(about = "Content-addressed data over HTTP using magnet links")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Serialize, Deserialize)]
 pub enum Commands {
     #[command(about = "Get a file from a magnet link")]
     Get {
@@ -30,30 +31,57 @@ pub enum Commands {
 
     #[command(about = "Add data to current directory. Creates a file using the CID as filename.")]
     Add {
-        #[arg(help = "File to add. If file is not provided, reads from stdin.")]
-        #[arg(value_name = "FILE")]
+        #[arg(
+            help = "File to add. If file is not provided, reads from stdin.",
+            value_name = "FILE"
+        )]
         file: Option<PathBuf>,
     },
 
     #[command(about = "Serve content addressed files over HTTP")]
     Serve {
-        #[arg(help = "Directory to serve. Creates directory if it doesn't already exist.")]
-        #[arg(value_name = "DIRECTORY")]
-        #[arg(default_value = "public")]
+        #[arg(
+            help = "Directory to serve. Creates directory if it doesn't already exist.",
+            value_name = "DIRECTORY",
+            default_value = "public"
+        )]
         dir: PathBuf,
 
-        #[arg(help = "Address to listen on")]
-        #[arg(value_name = "ADDRESS")]
-        #[arg(default_value = "0.0.0.0:3000")]
+        #[arg(
+            long,
+            help = "Address to listen on",
+            value_name = "ADDRESS",
+            default_value = "0.0.0.0:3000"
+        )]
         addr: String,
 
-        #[arg(help = "Allow file uploads via POST?")]
-        #[arg(short = 'p', long = "post")]
+        #[arg(long, help = "Allow file uploads via POST?")]
         post: bool,
 
         #[arg(
-            help = "Peers to gossip with. Reads peers from a file containing line-delimited URLs"
+            long,
+            help = "Peers to gossip with. Reads peers from a file containing line-delimited URLs."
         )]
         peers: Option<PathBuf>,
+
+        #[arg(
+            long,
+            value_enum,
+            help = "Peering mode. Who to receive federated writes from?"
+        )]
+        peering: Option<Peering>,
     },
+}
+
+#[derive(Debug, clap::ValueEnum, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Peering {
+    #[default]
+    #[value(
+        name = "trusted",
+        help = "Federate with trusted peers only. Use peers list both as a list to notify, and as an allow-list for who you will federate with."
+    )]
+    Trusted,
+    #[value(name = "all", help = "Federate with any and all peers")]
+    All,
 }
