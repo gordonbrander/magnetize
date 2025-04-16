@@ -83,7 +83,7 @@ pub async fn serve(config: ServerConfig) {
         .init();
 
     // Create message channel for background tasks
-    let (notification_sender, notification_receiver) = mpsc::channel::<NotificationTask>(100);
+    let (notification_sender, notification_receiver) = mpsc::channel::<NotificationTask>(1024);
 
     // Create HTTP client
     let client =
@@ -257,6 +257,11 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
         }
     };
 
+    // If peer is not in the list of known peers, do nothing
+    if !state.config.peers.contains(&peer) {
+        return (StatusCode::BAD_REQUEST, "Untrusted peer").into_response();
+    }
+
     let cid = match headers
         .get("magnetize-cid")
         .and_then(|s| s.to_str().ok())
@@ -298,15 +303,12 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
     };
 
     // Add notification task to the queue
-    if let Err(err) = state
-        .notification_sender
-        .send(NotificationTask {
-            cid: cid.clone(),
-            source_url: url.clone(),
-        })
-        .await
-    {
-        tracing::error!("Failed to queue notification task: {}", err);
+    // If queue is full, drop the task
+    if let Err(err) = state.notification_sender.try_send(NotificationTask {
+        cid: cid.clone(),
+        source_url: url.clone(),
+    }) {
+        tracing::error!("Failed to queue notification task. Error: {}", err);
     }
 
     // Return the CID
