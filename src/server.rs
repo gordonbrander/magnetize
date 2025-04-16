@@ -1,4 +1,5 @@
 use crate::cid::Cid;
+use crate::peers::should_allow_peer;
 use crate::request::{self, Client};
 use crate::url::Url;
 use crate::util::random_choice;
@@ -22,6 +23,7 @@ use url::Origin;
 pub struct ServerConfig {
     /// The address the server should listen on
     pub addr: String,
+    pub url: Url,
     /// The directory where content-addressed files will be stored
     pub dir: PathBuf,
     pub allow_post: bool,
@@ -35,6 +37,7 @@ pub struct ServerConfig {
 impl ServerConfig {
     pub fn new(
         addr: String,
+        url: Url,
         dir: PathBuf,
         allow_post: bool,
         allow_all: bool,
@@ -44,6 +47,7 @@ impl ServerConfig {
     ) -> Self {
         ServerConfig {
             addr,
+            url,
             dir,
             allow_post,
             allow_all,
@@ -287,67 +291,27 @@ async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> 
     }
 }
 
-/// Should we notify this peer?
-/// - Deny list is always honored
-/// - Otherwise, notifications are restricted to allow list unless allow_all is true
-pub fn should_notify(
-    peer: &Url,
-    allow: &HashSet<url::Origin>,
-    deny: &HashSet<url::Origin>,
-    allow_all: bool,
-) -> bool {
-    let peer_origin = peer.origin();
-    // Always honor deny list
-    if deny.contains(&peer_origin) {
-        return false;
-    }
-    // If peer is not in the deny list, and we allow all, return true
-    if allow_all {
-        return true;
-    }
-    // Otherwise check against allow list
-    allow.contains(&peer_origin)
-}
-
 async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Response {
-    // Get CID from request header
-    let peer = match headers
-        .get("magnetize-peer")
+    let ws = match headers
+        .get("ws")
         .and_then(|s| s.to_str().ok())
         .and_then(|s| Url::parse(s).ok())
     {
         Some(origin) => origin,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "magnetize-peer header missing or invalid",
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, "ws header missing or invalid").into_response();
         }
     };
 
-    // If peer is not in the list of known peers, do nothing
-    if !should_notify(
-        &peer,
-        &state.config.allow,
-        &state.config.deny,
-        state.config.allow_all,
-    ) {
-        return (StatusCode::BAD_REQUEST, "Untrusted peer").into_response();
-    }
-
+    // Get CID from request header
     let cid = match headers
-        .get("magnetize-cid")
+        .get("cid")
         .and_then(|s| s.to_str().ok())
         .and_then(|s| Cid::parse(s).ok())
     {
         Some(cid) => cid,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "magnetize-cid header missing or invalid",
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, "cid header missing or invalid").into_response();
         }
     };
 
@@ -358,12 +322,18 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
         return (StatusCode::OK, "Resource exists").into_response();
     }
 
-    let Ok(url) = peer.join(&cid.to_string()) else {
-        return (StatusCode::BAD_REQUEST, "Invalid URL").into_response();
-    };
+    // Do we want to listen to notifications about this peer and fetch content from it?
+    if !should_allow_peer(
+        &ws,
+        &state.config.allow,
+        &state.config.deny,
+        state.config.allow_all,
+    ) {
+        return (StatusCode::BAD_REQUEST, "Untrusted peer origin").into_response();
+    }
 
     // Fetch the file from the origin
-    let Ok(body) = request::get_cid(&state.client, &url, &cid).await else {
+    let Ok(body) = request::get_and_check_cid(&state.client, &ws, &cid).await else {
         return (StatusCode::BAD_REQUEST, format!("CID not found {}", &cid)).into_response();
     };
 
@@ -376,11 +346,20 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
             .into_response();
     };
 
+    // Construct URL pointing to the resource
+    let Ok(our_ws) = state.config.url.join(&cid.to_string()) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unable to create URL to resource",
+        )
+            .into_response();
+    };
+
     // Add notification task to the queue
     // If queue is full, drop the task
     if let Err(err) = state.notification_sender.try_send(NotifyTask {
         cid: cid.clone(),
-        url: url.clone(),
+        url: our_ws,
     }) {
         tracing::error!(
             err = format!("{}", err),
@@ -427,56 +406,4 @@ async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -
     }
 
     (StatusCode::BAD_REQUEST, "No file provided").into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_should_notify() {
-        let peer = Url::parse("https://example.com/resource").unwrap();
-        let peer2 = Url::parse("https://allowed.com/resource").unwrap();
-        let peer3 = Url::parse("https://denied.com/resource").unwrap();
-
-        let allow = HashSet::from_iter(vec![
-            url::Url::parse("https://allowed.com").unwrap().origin(),
-        ]);
-
-        let deny = HashSet::from_iter(vec![
-            url::Url::parse("https://denied.com").unwrap().origin(),
-        ]);
-
-        // Test with allow_all = true
-        assert!(
-            should_notify(&peer, &allow, &deny, true),
-            "When allow_all is true, non-denied peer should be notified"
-        );
-
-        assert!(
-            should_notify(&peer2, &allow, &deny, true),
-            "When allow_all is true, allowed peer should be notified"
-        );
-
-        assert!(
-            !should_notify(&peer3, &allow, &deny, true),
-            "When allow_all is true, denied peer should not be notified"
-        );
-
-        // Test with allow_all = false
-        assert!(
-            !should_notify(&peer, &allow, &deny, false),
-            "When allow_all is false, non-allowed peer should not be notified"
-        );
-
-        assert!(
-            should_notify(&peer2, &allow, &deny, false),
-            "When allow_all is false, allowed peer should be notified"
-        );
-
-        assert!(
-            !should_notify(&peer3, &allow, &deny, false),
-            "When allow_all is false, denied peer should not be notified"
-        );
-    }
 }

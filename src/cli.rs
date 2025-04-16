@@ -55,6 +55,13 @@ pub enum Commands {
         )]
         addr: String,
 
+        #[arg(
+            long,
+            help = "Public-facing URL of server. Used when sending peer notifications.",
+            value_name = "ADDRESS"
+        )]
+        url: String,
+
         #[arg(long, help = "Allow file uploads via POST?")]
         post: bool,
 

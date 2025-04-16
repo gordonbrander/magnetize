@@ -1,8 +1,7 @@
 use crate::cid::Cid;
 use crate::url::Url;
 use reqwest;
-pub use reqwest::Client;
-pub use reqwest::Response;
+pub use reqwest::{Client, Response};
 
 pub fn build_client(timeout: std::time::Duration) -> Result<Client, reqwest::Error> {
     let client = reqwest::ClientBuilder::new().timeout(timeout).build()?;
@@ -18,12 +17,14 @@ pub async fn head_cid(client: &Client, url: &Url, cid: &Cid) -> Result<Response,
     Ok(response)
 }
 
-/// Fetches a CID from a URL, does integrity check.
-/// Returns the bytes if file is found and integrity check passes.
-pub async fn get_cid(client: &Client, url: &Url, cid: &Cid) -> Result<Vec<u8>, RequestError> {
-    let cid_str = cid.to_string();
-    let url = url.join(&cid_str)?;
-    let response = client.get(url).send().await?;
+/// Fetch a URL and do an integrity check on the body against a CID.
+/// Returns the bytes if resource is found and integrity check passes.
+pub async fn get_and_check_cid(
+    client: &Client,
+    url: &Url,
+    cid: &Cid,
+) -> Result<Vec<u8>, RequestError> {
+    let response = client.get(url.as_str()).send().await?;
     let body = response.bytes().await?;
 
     // Generate CID from response
@@ -47,14 +48,14 @@ pub async fn get_cid(client: &Client, url: &Url, cid: &Cid) -> Result<Vec<u8>, R
 /// Returns the response.
 pub async fn post_notify(
     client: &Client,
-    from: &Url,
     to: &Url,
+    ws: &Url,
     cid: &Cid,
 ) -> Result<Response, RequestError> {
     let response = client
         .post(to.as_str())
-        .header("magnetize-peer", from.as_str())
-        .header("magnetize-cid", cid.to_string())
+        .header("ws", ws.to_string())
+        .header("cid", cid.to_string())
         .send()
         .await?;
     Ok(response)
