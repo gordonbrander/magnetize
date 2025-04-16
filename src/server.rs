@@ -1,6 +1,7 @@
 use crate::cid::Cid;
-use crate::request;
+use crate::request::{self, Client};
 use crate::url::Url;
+use crate::util::random_choice;
 use axum::{
     Router,
     extract::{Multipart, Path, Query, State},
@@ -8,40 +9,34 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{fs, io::Write};
 use std::{path::PathBuf, time::Duration};
+use tokio::sync::mpsc;
 use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
 
-#[derive(Clone)]
-pub struct ServerState {
-    /// The address the server should listen on
-    pub address: String,
-    /// The directory where content-addressed files will be stored
-    pub file_storage_dir: PathBuf,
-    pub allow_post: bool,
-    pub peers: Vec<Url>,
-    pub client: reqwest::Client,
+// Define a notification task
+struct NotificationTask {
+    cid: Cid,
+    source_url: Url,
 }
 
-impl ServerState {
-    pub fn new(
-        address: String,
-        file_storage_dir: PathBuf,
-        peers: Vec<Url>,
-        allow_post: bool,
-    ) -> Self {
-        let client =
-            request::build_client(Duration::from_secs(2)).expect("Could not create HTTP client");
-        ServerState {
-            address,
-            file_storage_dir,
-            allow_post,
-            peers,
-            client,
-        }
-    }
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// The address the server should listen on
+    pub addr: String,
+    /// The directory where content-addressed files will be stored
+    pub dir: PathBuf,
+    pub allow_post: bool,
+    pub peers: Vec<Url>,
+}
+
+#[derive(Clone)]
+struct ServerState {
+    pub config: ServerConfig,
+    pub client: Client,
+    pub notification_sender: mpsc::Sender<NotificationTask>,
 }
 
 #[derive(Debug)]
@@ -77,16 +72,32 @@ impl From<std::io::Error> for ServerError {
 
 /// Multithread server (number of threads = number of CPUs)
 #[tokio::main(flavor = "multi_thread")]
-pub async fn serve(state: ServerState) {
+pub async fn serve(config: ServerConfig) {
     // Create the file storage directory if it doesn't exist
-    std::fs::create_dir_all(&state.file_storage_dir)
-        .expect("Unable to create file storage directory");
+    std::fs::create_dir_all(&config.dir).expect("Unable to create file storage directory");
 
     // Setup tracing (logs)
     tracing_subscriber::fmt()
         .with_target(false)
         .compact()
         .init();
+
+    // Create message channel for background tasks
+    let (notification_sender, notification_receiver) = mpsc::channel::<NotificationTask>(100);
+
+    // Create HTTP client
+    let client =
+        request::build_client(Duration::from_secs(2)).expect("Could not create HTTP client");
+
+    let address = config.addr.clone();
+    let worker_client = client.clone();
+    let worker_peers = config.peers.clone();
+
+    let state = ServerState {
+        config,
+        notification_sender,
+        client,
+    };
 
     // Build our application with routes
     let app = Router::new()
@@ -100,18 +111,52 @@ pub async fn serve(state: ServerState) {
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
         )
-        .with_state(state.clone());
+        .with_state(state);
+
+    // Spawn worker
+    tokio::spawn(notification_worker(
+        notification_receiver,
+        worker_client,
+        worker_peers,
+    ));
 
     // Run the server
-    let listener = tokio::net::TcpListener::bind(&state.address)
+    let listener = tokio::net::TcpListener::bind(&address)
         .await
         .expect("Unable to bind server to address");
 
-    tracing::info!("listening on {}", &state.address);
+    tracing::info!("listening on {}", &address);
 
     axum::serve(listener, app)
         .await
         .expect("Unable to start server");
+}
+
+// Worker that processes background tasks
+async fn notification_worker(
+    mut receiver: mpsc::Receiver<NotificationTask>,
+    client: reqwest::Client,
+    peers: Vec<Url>,
+) {
+    tracing::info!("Notification worker started");
+    // Process notifications until the channel is closed
+    while let Some(task) = receiver.recv().await {
+        // Select up to 12 random peers to notify
+        let selected_peers = random_choice(peers.clone(), 12);
+
+        for peer in selected_peers {
+            match request::post_notify(&client, &peer, &task.source_url, &task.cid).await {
+                Ok(_) => {
+                    tracing::info!("Notified peer {} of {}", &peer, &task.cid);
+                }
+                Err(err) => {
+                    tracing::info!("Failed to notify peer {}. Error: {}", &peer, err);
+                }
+            }
+        }
+    }
+
+    tracing::info!("Notification worker shutting down");
 }
 
 // Handler for GET /
@@ -135,7 +180,7 @@ async fn get_cid(
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
-    let file_path = state.file_storage_dir.join(&cid.to_string());
+    let file_path = state.config.dir.join(&cid.to_string());
 
     // Read and return file contents if it exists
     // Include content-digest header.
@@ -175,7 +220,7 @@ async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> 
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
-    let file_path = state.file_storage_dir.join(&cid.to_string());
+    let file_path = state.config.dir.join(&cid.to_string());
 
     if file_path.exists() {
         (StatusCode::OK, "").into_response()
@@ -186,32 +231,44 @@ async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> 
 
 async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Response {
     // Get CID from request header
-    let origin = match headers
-        .get("origin")
+    let peer = match headers
+        .get("magnetize-peer")
         .and_then(|s| s.to_str().ok())
         .and_then(|s| Url::parse(s).ok())
     {
         Some(origin) => origin,
-        None => return (StatusCode::BAD_REQUEST, "Origin missing or invalid").into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "magnetize-peer header missing or invalid",
+            )
+                .into_response();
+        }
     };
 
     let cid = match headers
-        .get("cid")
+        .get("magnetize-cid")
         .and_then(|s| s.to_str().ok())
         .and_then(|s| Cid::parse(s).ok())
     {
         Some(cid) => cid,
-        None => return (StatusCode::BAD_REQUEST, "CID header missing or invalid").into_response(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "magnetize-cid header missing or invalid",
+            )
+                .into_response();
+        }
     };
 
-    let file_path = state.file_storage_dir.join(&cid.to_string());
+    let file_path = state.config.dir.join(&cid.to_string());
 
     // Exit early if we already know about this CID
     if file_path.exists() {
         return (StatusCode::OK, "").into_response();
     }
 
-    let Ok(url) = origin.join(&cid.to_string()) else {
+    let Ok(url) = peer.join(&cid.to_string()) else {
         return (StatusCode::BAD_REQUEST, "Invalid URL").into_response();
     };
 
@@ -229,13 +286,25 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
             .into_response();
     };
 
+    // Add notification task to the queue
+    if let Err(err) = state
+        .notification_sender
+        .send(NotificationTask {
+            cid: cid.clone(),
+            source_url: url.clone(),
+        })
+        .await
+    {
+        tracing::error!("Failed to queue notification task: {}", err);
+    }
+
     // Return the CID
-    (StatusCode::CREATED, cid.to_string()).into_response()
+    (StatusCode::CREATED, format!("{}", &cid)).into_response()
 }
 
 // Handler for POST /
 async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
-    if state.allow_post == false {
+    if state.config.allow_post == false {
         return (StatusCode::FORBIDDEN, "Uploads are not allowed").into_response();
     }
 
@@ -250,7 +319,7 @@ async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -
         let cid_string = cid.to_string();
 
         // Save the file with the hash as the name
-        let path = PathBuf::from(state.file_storage_dir).join(&cid_string);
+        let path = PathBuf::from(state.config.dir).join(&cid_string);
         match std::fs::File::create(&path) {
             Ok(mut file) => {
                 if let Err(_) = file.write_all(&data) {

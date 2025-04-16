@@ -3,7 +3,7 @@ use magnetize::cli::{Cli, Commands, Parser};
 use magnetize::magnet::MagnetLink;
 use magnetize::peers::read_peers;
 use magnetize::request::get_cid;
-use magnetize::server::{ServerState, serve};
+use magnetize::server::{ServerConfig, serve};
 use magnetize::url::Url;
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -34,8 +34,12 @@ fn main() {
                 }
                 None => Vec::new(),
             };
-            let state = ServerState::new(addr, dir, peers, post);
-            serve(state);
+            serve(ServerConfig {
+                addr,
+                dir,
+                peers,
+                allow_post: post,
+            });
         }
     }
 }
