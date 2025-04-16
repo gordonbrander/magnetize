@@ -132,6 +132,12 @@ pub async fn serve(config: ServerConfig) {
         .expect("Unable to start server");
 }
 
+/// Sleep for a random duration between 0 and `max` milliseconds.
+async fn sleep_jitter(max: Duration) {
+    let jitter = rand::random_range(Duration::from_secs(0)..max);
+    tokio::time::sleep(jitter).await;
+}
+
 // Worker that processes background tasks
 async fn notification_worker(
     mut receiver: mpsc::Receiver<NotificationTask>,
@@ -143,6 +149,11 @@ async fn notification_worker(
     while let Some(task) = receiver.recv().await {
         // Select up to 12 random peers to notify
         let selected_peers = random_choice(peers.clone(), 12);
+
+        // Add some jitter (random delay) to spread out traffic spikes in the network and prevent congestion
+        // See: <https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/>
+        // See: <https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/>
+        sleep_jitter(Duration::from_millis(500)).await;
 
         for peer in selected_peers {
             match request::post_notify(&client, &peer, &task.source_url, &task.cid).await {
