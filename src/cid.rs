@@ -10,7 +10,7 @@ const MULTIHASH_SHA256: u8 = 0x12;
 /// Represents a CIDv1 with SHA-256 hash using raw codec (0x55)
 /// The struct itself holds only the SHA-256 hash bytes.
 /// To get a CIDV1 bytes representation, use the `to_cid_bytes` method.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Cid([u8; 32]);
 
 impl Cid {
