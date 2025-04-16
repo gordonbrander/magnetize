@@ -69,6 +69,7 @@ impl MagnetLink {
     /// Returns a vec of all the URLS that you can hit to download the file.
     pub fn urls(&self) -> Vec<Url> {
         let cid_string = self.cid.to_string();
+        // Join CID to the end of CDN URLs
         let cdn_urls = self.cdn.iter().filter_map(|url| url.join(&cid_string).ok());
         let ws_urls = self.ws.clone().into_iter();
         cdn_urls.chain(ws_urls).collect()
@@ -246,5 +247,42 @@ mod tests {
         let parsed = MagnetLink::parse(&url_string).unwrap();
         assert_eq!(parsed.cid, magnet_link.cid);
         assert!(parsed.ws.is_empty());
+    }
+
+    #[test]
+    fn test_urls_method() {
+        let cid_str = "bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4";
+        let magnet_link = MagnetLink {
+            cid: Cid::parse(cid_str).unwrap(),
+            cdn: vec![
+                Url::parse("https://cdn1.example.com/").unwrap(),
+                Url::parse("https://cdn2.example.com").unwrap(),
+            ],
+            ws: vec![
+                Url::parse("https://direct1.example.com/file.txt").unwrap(),
+                Url::parse("https://direct2.example.com/another-file.txt").unwrap(),
+            ],
+            xt: None,
+            dn: None,
+        };
+
+        let urls = magnet_link.urls();
+
+        // Check that we have the expected number of URLs
+        assert_eq!(urls.len(), 4);
+
+        // Check CDN URLs have CID appended
+        assert!(
+            urls.contains(&Url::parse(&format!("https://cdn1.example.com/{}", cid_str)).unwrap())
+        );
+        assert!(
+            urls.contains(&Url::parse(&format!("https://cdn2.example.com/{}", cid_str)).unwrap())
+        );
+
+        // Check WS URLs are left as-is
+        assert!(urls.contains(&Url::parse("https://direct1.example.com/file.txt").unwrap()));
+        assert!(
+            urls.contains(&Url::parse("https://direct2.example.com/another-file.txt").unwrap())
+        );
     }
 }

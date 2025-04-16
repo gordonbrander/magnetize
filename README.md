@@ -36,12 +36,17 @@ See `mag --help` for a full list of commands and features.
 - [ ] `serve` - content-addressed file server
   - [x] GET content by CID
   - [x] Store-and-forward federation
-  - [ ] Simple gossip-based federation
   - [x] POST content to server
   - [x] Option to turn off POST
   - [ ] Option to require secret to POST
   - [ ] Option to encrypt content ala Magenc
-  - [ ] Logging
+  - [x] Logging (tracing)
+- [ ] Simple gossip-based federation
+  - [x] Select n random peers and gossip updates to them
+  - [x] Configurable list of peers to notify
+  - [x] Configurable peer deny list
+  - [x] Configurable peer allow list
+  - [ ] Configurable CID block list
 -  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links

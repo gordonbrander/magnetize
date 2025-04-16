@@ -10,14 +10,14 @@ const MULTIHASH_SHA256: u8 = 0x12;
 /// Represents a CIDv1 with SHA-256 hash using raw codec (0x55)
 /// The struct itself holds only the SHA-256 hash bytes.
 /// To get a CIDV1 bytes representation, use the `to_cid_bytes` method.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Cid([u8; 32]);
 
 impl Cid {
     /// Parse a CIDv1 from bytes representing a CIDv1
     pub fn parse_bytes(cid_bytes: Vec<u8>) -> result::Result<Self, CidError> {
         if cid_bytes.len() != 36 {
-            return Err(CidError::ValueError("Invalid CID length".to_string()));
+            return Err(CidError::new("Invalid CID length"));
         }
 
         let version = cid_bytes[0];
@@ -30,7 +30,7 @@ impl Cid {
             || hash_algo != MULTIHASH_SHA256
             || hash_len != 32
         {
-            return Err(CidError::ValueError("Invalid CID format".to_string()));
+            return Err(CidError::new("Invalid CID format"));
         }
 
         // Create a fixed-size array from the hash slice
@@ -45,9 +45,8 @@ impl Cid {
     pub fn parse(cid_str: &str) -> result::Result<Self, CidError> {
         // Check if the CID starts with "b" (multicodec code for base32 lowercase encoded)
         if !cid_str.starts_with("b") {
-            return Err(CidError::ValueError(
-                "Invalid CID. CID must be multicodec base32 lowercase encoded (starts with 'b')"
-                    .to_string(),
+            return Err(CidError::new(
+                "Invalid CID. CID must be multicodec base32 lowercase encoded (starts with 'b')",
             ));
         }
         let cid_body = &cid_str[1..]; // drop the "b"
@@ -131,17 +130,19 @@ impl std::fmt::Display for Cid {
 }
 
 #[derive(Debug)]
-pub enum CidError {
-    DecodeError(data_encoding::DecodeError),
-    ValueError(String),
+pub struct CidError {
+    msg: String,
+}
+
+impl CidError {
+    pub fn new<S: Into<String>>(msg: S) -> Self {
+        CidError { msg: msg.into() }
+    }
 }
 
 impl std::fmt::Display for CidError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CidError::DecodeError(err) => write!(f, "Decode error: {}", err),
-            CidError::ValueError(err) => write!(f, "Value error: {}", err),
-        }
+        write!(f, "{}", self.msg)
     }
 }
 
@@ -149,7 +150,7 @@ impl std::error::Error for CidError {}
 
 impl From<data_encoding::DecodeError> for CidError {
     fn from(err: data_encoding::DecodeError) -> Self {
-        CidError::DecodeError(err)
+        CidError::new(err.to_string())
     }
 }
 
