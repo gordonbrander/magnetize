@@ -1,19 +1,21 @@
 use crate::cid::Cid;
 use crate::db::{Database, OriginStatus};
+use crate::magnet::MagnetLink;
 use crate::request::{self, Client};
 use crate::url::Url;
+use axum::Json;
 use axum::{
     Router,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
 use rand;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::{path::PathBuf, time::Duration};
-use tokio::sync::mpsc;
+use std::path::{self, PathBuf};
+use std::time::Duration;
 use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
 
@@ -38,7 +40,6 @@ struct ServerState {
     pub db: PathBuf,
     pub fed_all: bool,
     pub client: Client,
-    pub notification_sender: mpsc::Sender<NotifyTask>,
 }
 
 /// Multithread server (number of threads = number of CPUs)
@@ -59,17 +60,11 @@ pub async fn serve(config: ServerConfig) {
         .migrate()
         .expect("Unable to set up database");
 
-    // Create message channel for background tasks
-    let (notification_sender, notification_receiver) = mpsc::channel::<NotifyTask>(1024);
-
     // Create HTTP client
     let client =
         request::build_client(Duration::from_secs(2)).expect("Could not create HTTP client");
 
     let addr = config.addr.clone();
-    let worker_client = client.clone();
-    let worker_db_path = config.db.clone();
-
     let url = Url::parse(&config.url).expect("Server URL is invalid");
 
     let state = ServerState {
@@ -78,13 +73,12 @@ pub async fn serve(config: ServerConfig) {
         db: config.db,
         url,
         client,
-        notification_sender,
     };
 
     // Build our application with routes
     let app = Router::new()
         .route("/", get(get_index))
-        .route("/notify", post(post_notify))
+        .route("/", post(post_index))
         .route("/{cid}", get(get_cid))
         .route("/{cid}", head(head_cid))
         .layer(
@@ -93,14 +87,6 @@ pub async fn serve(config: ServerConfig) {
                 .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
         )
         .with_state(state);
-
-    // Spawn worker
-    let worker_db = Database::open(&worker_db_path).expect("Unable to open database file");
-    tokio::spawn(notify_worker(
-        notification_receiver,
-        worker_db,
-        worker_client,
-    ));
 
     // Run the server
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -114,73 +100,142 @@ pub async fn serve(config: ServerConfig) {
         .expect("Unable to start server");
 }
 
+// Handler for GET /
+async fn get_index() -> Response {
+    (StatusCode::OK, "GET /{CID}").into_response()
+}
+
 /// Sleep for a random duration between 0 and `max` milliseconds.
 async fn sleep_jitter(max: Duration) {
     let jitter = rand::random_range(Duration::from_secs(0)..max);
     tokio::time::sleep(jitter).await;
 }
 
-// Task to notify a peer
-#[derive(Debug, Clone)]
-struct NotifyTask {
-    cid: Cid,
-    url: Url,
+/// Notify other feds of content, issuing POST requests to their endpoint
+async fn notify_feds(client: &reqwest::Client, db_path: &path::Path, magnet: &MagnetLink) {
+    tracing::info!("Notifying feds");
+
+    let mut db = match Database::open(db_path) {
+        Ok(db) => db,
+        Err(err) => {
+            tracing::error!(err = format!("{}", err), "Unable to open database");
+            return;
+        }
+    };
+
+    // Choose N random feds to notify
+    let selected_feds = match db.choose_random_notify(12) {
+        Ok(feds) => feds,
+        Err(err) => {
+            tracing::error!(err = format!("{}", err), "Unable to choose feds");
+            return;
+        }
+    };
+
+    // Add some jitter (random delay) to spread out traffic spikes in the network and prevent congestion
+    // See: <https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/>
+    // See: <https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/>
+    sleep_jitter(Duration::from_millis(250)).await;
+
+    for fed in selected_feds {
+        match request::post_fed_cid_with_magnet(client, &fed, &magnet).await {
+            Ok(_) => {
+                tracing::info!(
+                    fed = &fed.to_string(),
+                    cid = &magnet.cid.to_string(),
+                    "Notified fed"
+                );
+            }
+            Err(err) => {
+                tracing::info!(
+                    err = format!("{}", err),
+                    fed = fed.to_string(),
+                    "Unable to notify fed"
+                );
+            }
+        }
+    }
 }
 
-// Worker that processes background tasks
-async fn notify_worker(
-    mut receiver: mpsc::Receiver<NotifyTask>,
-    mut db: Database,
-    client: reqwest::Client,
-) {
-    tracing::info!("Notification worker started");
+async fn post_index(State(state): State<ServerState>, Json(magnet): Json<MagnetLink>) -> Response {
+    let file_path = state.dir.join(&magnet.cid.to_string());
 
-    // Process notifications until the channel is closed
-    while let Some(task) = receiver.recv().await {
-        // Choose N random feds to notify
-        let selected_feds = match db.choose_random_notify(12) {
-            Ok(feds) => feds,
+    // Exit early if we already know about this CID
+    if file_path.exists() {
+        return (StatusCode::OK, "Resource exists").into_response();
+    }
+
+    // Open database connection
+    let db = match Database::open(&state.db) {
+        Ok(db) => db,
+        Err(err) => {
+            tracing::error!("Failed to open database: {}", err);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
+        }
+    };
+
+    for url in magnet.urls() {
+        // Get trust status of fed
+        let fed_status = match db.read_origin_status(&url) {
+            Ok(status) => status,
             Err(err) => {
-                tracing::error!(err = format!("{}", err), "Unable to choose feds");
+                tracing::error!("Failed to read origin status: {}", err);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
+            }
+        };
+
+        // Always deny if fed is on deny list
+        if fed_status == OriginStatus::Deny {
+            tracing::info!(url = url.as_str(), "Fed on deny list. Denying.");
+            continue;
+        }
+
+        // Deny if fed is unknown and fed_all is false
+        if fed_status == OriginStatus::Unknown && state.fed_all == false {
+            tracing::info!(
+                url = url.as_str(),
+                "Fed not on allow-list. Only federating with allow-listed feds. Skipping."
+            );
+            continue;
+        }
+
+        // Otherwise, URL is either on allow list or fed_all is true
+
+        // Fetch the file from the origin
+        let body = match request::get_and_check_cid(&state.client, &url, &magnet.cid).await {
+            Ok(body) => body,
+            Err(err) => {
+                tracing::info!(err = format!("{}", err), "Request failed");
                 continue;
             }
         };
 
-        // Add some jitter (random delay) to spread out traffic spikes in the network and prevent congestion
-        // See: <https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/>
-        // See: <https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/>
-        sleep_jitter(Duration::from_millis(500)).await;
+        // Write bytes to storage
+        let Ok(_) = std::fs::write(&file_path, body) else {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create resource",
+            )
+                .into_response();
+        };
 
-        for peer in selected_feds {
-            match request::post_notify(&client, &peer, &task.url, &task.cid).await {
-                Ok(_) => {
-                    tracing::info!(
-                        peer = &peer.to_string(),
-                        cid = &task.cid.to_string(),
-                        "Notified peer"
-                    );
-                }
-                Err(err) => {
-                    tracing::info!(
-                        err = format!("{}", err),
-                        peer = peer.to_string(),
-                        "Failed to notify peer"
-                    );
-                }
-            }
-        }
+        // Create a new magnet link with only the CID and our fed
+        let mut our_magnet = MagnetLink::new(magnet.cid.clone());
+        our_magnet.cdn.push(state.url);
+
+        // Notify other feds about the new resource
+        notify_feds(&state.client, &state.db, &our_magnet).await;
+
+        // Return the CID
+        return (StatusCode::CREATED, format!("{}", &our_magnet.cid)).into_response();
     }
 
-    tracing::info!("Notification worker shutting down");
-}
-
-// Handler for GET /
-async fn get_index() -> Response {
-    (StatusCode::OK, "GET /{CID}").into_response()
+    // Content not found on any trusted fed
+    (StatusCode::BAD_GATEWAY, "").into_response()
 }
 
 #[derive(Deserialize)]
-struct GetCidParams {
+struct CidParams {
     dn: Option<String>,
 }
 
@@ -188,7 +243,7 @@ struct GetCidParams {
 async fn get_cid(
     State(state): State<ServerState>,
     Path(cid): Path<String>,
-    query: Query<GetCidParams>,
+    query: Query<CidParams>,
 ) -> Response {
     // Only allow GET requests for valid CIDs
     let Ok(cid) = Cid::parse(&cid) else {
@@ -242,104 +297,4 @@ async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> 
     } else {
         (StatusCode::NOT_FOUND, "File not found").into_response()
     }
-}
-
-async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Response {
-    let ws = match headers
-        .get("ws")
-        .and_then(|s| s.to_str().ok())
-        .and_then(|s| Url::parse(s).ok())
-    {
-        Some(origin) => origin,
-        None => {
-            return (StatusCode::BAD_REQUEST, "ws header missing or invalid").into_response();
-        }
-    };
-
-    // Get CID from request header
-    let cid = match headers
-        .get("cid")
-        .and_then(|s| s.to_str().ok())
-        .and_then(|s| Cid::parse(s).ok())
-    {
-        Some(cid) => cid,
-        None => {
-            return (StatusCode::BAD_REQUEST, "cid header missing or invalid").into_response();
-        }
-    };
-
-    let file_path = state.dir.join(&cid.to_string());
-
-    // Exit early if we already know about this CID
-    if file_path.exists() {
-        return (StatusCode::OK, "Resource exists").into_response();
-    }
-
-    // Open database connection
-    let db = match Database::open(&state.db) {
-        Ok(db) => db,
-        Err(err) => {
-            tracing::error!("Failed to open database: {}", err);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
-        }
-    };
-
-    // Get trust status of fed
-    let fed_status = match db.read_origin_status(&ws) {
-        Ok(status) => status,
-        Err(err) => {
-            tracing::error!("Failed to read origin status: {}", err);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
-        }
-    };
-
-    // Always deny if fed is on deny list
-    if fed_status == OriginStatus::Deny {
-        return (StatusCode::BAD_REQUEST, "Untrusted origin").into_response();
-    }
-
-    // Deny if fed is unknown and fed_all is false
-    if fed_status == OriginStatus::Unknown && state.fed_all == false {
-        return (StatusCode::BAD_REQUEST, "Untrusted origin").into_response();
-    }
-
-    // Otherwise, we're either on allow list or fed_all is true
-
-    // Fetch the file from the origin
-    let Ok(body) = request::get_and_check_cid(&state.client, &ws, &cid).await else {
-        return (StatusCode::BAD_REQUEST, format!("CID not found {}", &cid)).into_response();
-    };
-
-    // Write bytes to storage
-    let Ok(_) = std::fs::write(&file_path, body) else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to create resource",
-        )
-            .into_response();
-    };
-
-    // Construct URL pointing to the resource on our peer
-    let Ok(our_ws) = state.url.join(&cid.to_string()) else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Unable to create URL to resource",
-        )
-            .into_response();
-    };
-
-    // Add notification task to the queue
-    // If queue is full, drop the task
-    if let Err(err) = state.notification_sender.try_send(NotifyTask {
-        cid: cid.clone(),
-        url: our_ws,
-    }) {
-        tracing::error!(
-            err = format!("{}", err),
-            "Failed to queue notification task"
-        );
-    }
-
-    // Return the CID
-    (StatusCode::CREATED, format!("{}", &cid)).into_response()
 }

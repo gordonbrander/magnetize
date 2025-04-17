@@ -55,9 +55,7 @@ See `mag --help` for a full list of commands and features.
 
 ## Magnet links
 
-Magnet links bundle together multiple ways to fetch the same data. They are frequently used for locating data on BitTorrent, but are a general-purpose protocol that can be used in various contexts. Magnetize extends magnet links, adding parameters to support content-addressed data over HTTP.
-
-While magnet links are a de facto standard, with no formally standardized semantics,there have been [attempts to coordinate the way BitTorrent clients use parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). Magnetize tries to remain broadly compatible with these efforts.
+Magnet links are used for locating data on BitTorrent. However, they are also a general-purpose protocol for bundling together multiple ways to fetch the same data. Magnetize extends magnet links, adding parameters to support content-addressed data over HTTP.
 
 Magnet link parameters supported by Magnetize:
 
@@ -67,7 +65,7 @@ Magnet link parameters supported by Magnetize:
 - `dn`: "Display Name". A suggested file name.
 - `xt`: "Exact Topic". A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
 
-Note it is possible to construct a hybrid magnet link that works with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/) by including the `xt` parameter.
+While magnet links are a de facto standard, without a formal standardized, there have been [attempts to document the way BitTorrent clients commonly use magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). Magnetize aims to be compatible with these. That means you can construct hybrid magnet links that work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter.
 
 ```url
 magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
