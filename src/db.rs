@@ -1,9 +1,11 @@
 use crate::migrate::{self, migrate};
 use crate::url::Url;
 use rusqlite::{self, OptionalExtension, named_params};
+use std::path::Path;
 
 /// Interface for interacting with SQLite database.
 /// Database is used ot keep track of basic server state, such as URLs that should be notified, allowed, denied.
+#[derive(Debug)]
 pub struct Database {
     connection: rusqlite::Connection,
 }
@@ -11,7 +13,7 @@ pub struct Database {
 impl Database {
     /// Open a database connection at the given path.
     /// Path is a path to a SQLite database file, or a SQLite connection string.
-    pub fn open(path: &str) -> Result<Self, DbError> {
+    pub fn open(path: &Path) -> Result<Self, DbError> {
         let connection = rusqlite::Connection::open(path)?;
         Ok(Database { connection })
     }

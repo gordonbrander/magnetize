@@ -1,50 +1,42 @@
 use crate::cid::Cid;
-use crate::peers::{self, should_allow_peer};
+use crate::db::{Database, OriginStatus};
 use crate::request::{self, Client};
 use crate::url::Url;
-use crate::util::{open_or_create_file, random_choice};
 use axum::{
     Router,
-    extract::{Multipart, Path, Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
+use rand;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::{fs, fs::File, io::Write};
+use std::fs;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
-use url::Origin;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// The address the server should listen on
     pub addr: String,
+    /// Public-facing URL of the server
     pub url: String,
     /// The directory where content-addressed files will be stored
     pub dir: PathBuf,
-    pub allow_post: bool,
+    /// File path to SQLite database storing server state
+    pub db: PathBuf,
     /// Allow federating with any peer?
-    pub allow_all: bool,
-    pub notify: PathBuf,
-    pub allow: PathBuf,
-    pub deny: PathBuf,
+    pub fed_all: bool,
 }
 
 #[derive(Clone)]
 struct ServerState {
     pub url: Url,
-    /// The directory where content-addressed files will be stored
     pub dir: PathBuf,
-    pub allow_post: bool,
-    /// Allow federating with any peer?
-    pub allow_all: bool,
-    pub notify: PathBuf,
-    pub allow: HashSet<Origin>,
-    pub deny: HashSet<Origin>,
+    pub db: PathBuf,
+    pub fed_all: bool,
     pub client: Client,
     pub notification_sender: mpsc::Sender<NotifyTask>,
 }
@@ -61,6 +53,12 @@ pub async fn serve(config: ServerConfig) {
     // Create the file storage directory if it doesn't exist
     std::fs::create_dir_all(&config.dir).expect("Unable to create file storage directory");
 
+    // Set up database
+    Database::open(&config.db)
+        .expect("Unable to open database")
+        .migrate()
+        .expect("Unable to set up database");
+
     // Create message channel for background tasks
     let (notification_sender, notification_receiver) = mpsc::channel::<NotifyTask>(1024);
 
@@ -70,28 +68,15 @@ pub async fn serve(config: ServerConfig) {
 
     let addr = config.addr.clone();
     let worker_client = client.clone();
-    let worker_notify_peers = config.notify.clone();
+    let worker_db_path = config.db.clone();
 
     let url = Url::parse(&config.url).expect("Server URL is invalid");
 
-    let allow_file = open_or_create_file(&config.allow).expect("Could not open file");
-    let allow: HashSet<Origin> = peers::read_valid_urls_from_lines(allow_file)
-        .map(|url| url.origin())
-        .collect();
-
-    let deny_file = open_or_create_file(&config.deny).expect("Could not open file");
-    let deny: HashSet<Origin> = peers::read_valid_urls_from_lines(deny_file)
-        .map(|url| url.origin())
-        .collect();
-
     let state = ServerState {
         dir: config.dir,
-        allow_post: config.allow_post,
-        allow_all: config.allow_all,
-        notify: config.notify,
+        fed_all: config.fed_all,
+        db: config.db,
         url,
-        allow,
-        deny,
         client,
         notification_sender,
     };
@@ -99,7 +84,6 @@ pub async fn serve(config: ServerConfig) {
     // Build our application with routes
     let app = Router::new()
         .route("/", get(get_index))
-        .route("/", post(post_file))
         .route("/notify", post(post_notify))
         .route("/{cid}", get(get_cid))
         .route("/{cid}", head(head_cid))
@@ -111,10 +95,11 @@ pub async fn serve(config: ServerConfig) {
         .with_state(state);
 
     // Spawn worker
+    let worker_db = Database::open(&worker_db_path).expect("Unable to open database file");
     tokio::spawn(notify_worker(
         notification_receiver,
+        worker_db,
         worker_client,
-        worker_notify_peers,
     ));
 
     // Run the server
@@ -145,32 +130,28 @@ struct NotifyTask {
 // Worker that processes background tasks
 async fn notify_worker(
     mut receiver: mpsc::Receiver<NotifyTask>,
+    mut db: Database,
     client: reqwest::Client,
-    notify_path: PathBuf,
 ) {
     tracing::info!("Notification worker started");
+
     // Process notifications until the channel is closed
     while let Some(task) = receiver.recv().await {
-        let notify_file = match File::open(&notify_path) {
-            Ok(file) => file,
+        // Choose N random feds to notify
+        let selected_feds = match db.choose_random_notify(12) {
+            Ok(feds) => feds,
             Err(err) => {
-                tracing::error!(err = err.to_string(), "Unable to open notify file");
+                tracing::error!(err = format!("{}", err), "Unable to choose feds");
                 continue;
             }
         };
-
-        // Load peers from notify file
-        let all_peers: Vec<Url> = peers::read_valid_urls_from_lines(notify_file).collect();
-
-        // Select up to 12 random peers to notify
-        let selected_peers = random_choice(all_peers, 12);
 
         // Add some jitter (random delay) to spread out traffic spikes in the network and prevent congestion
         // See: <https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/>
         // See: <https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/>
         sleep_jitter(Duration::from_millis(500)).await;
 
-        for peer in selected_peers {
+        for peer in selected_feds {
             match request::post_notify(&client, &peer, &task.url, &task.cid).await {
                 Ok(_) => {
                     tracing::info!(
@@ -294,17 +275,42 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
         return (StatusCode::OK, "Resource exists").into_response();
     }
 
-    // Do we want to listen to notifications about this peer and fetch content from it?
-    if !should_allow_peer(&ws, &state.allow, &state.deny, state.allow_all) {
-        return (StatusCode::BAD_REQUEST, "Untrusted peer origin").into_response();
+    // Open database connection
+    let db = match Database::open(&state.db) {
+        Ok(db) => db,
+        Err(err) => {
+            tracing::error!("Failed to open database: {}", err);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
+        }
+    };
+
+    // Get trust status of fed
+    let fed_status = match db.read_origin_status(&ws) {
+        Ok(status) => status,
+        Err(err) => {
+            tracing::error!("Failed to read origin status: {}", err);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "").into_response();
+        }
+    };
+
+    // Always deny if fed is on deny list
+    if fed_status == OriginStatus::Deny {
+        return (StatusCode::BAD_REQUEST, "Untrusted origin").into_response();
     }
+
+    // Deny if fed is unknown and fed_all is false
+    if fed_status == OriginStatus::Unknown && state.fed_all == false {
+        return (StatusCode::BAD_REQUEST, "Untrusted origin").into_response();
+    }
+
+    // Otherwise, we're either on allow list or fed_all is true
 
     // Fetch the file from the origin
     let Ok(body) = request::get_and_check_cid(&state.client, &ws, &cid).await else {
         return (StatusCode::BAD_REQUEST, format!("CID not found {}", &cid)).into_response();
     };
 
-    // Write bytes to file
+    // Write bytes to storage
     let Ok(_) = std::fs::write(&file_path, body) else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -313,7 +319,7 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
             .into_response();
     };
 
-    // Construct URL pointing to the resource
+    // Construct URL pointing to the resource on our peer
     let Ok(our_ws) = state.url.join(&cid.to_string()) else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -336,41 +342,4 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
 
     // Return the CID
     (StatusCode::CREATED, format!("{}", &cid)).into_response()
-}
-
-// Handler for POST /
-async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
-    if state.allow_post == false {
-        return (StatusCode::FORBIDDEN, "Uploads are not allowed").into_response();
-    }
-
-    while let Ok(Some(field)) = multipart.next_field().await {
-        // Get the file data
-        let data = match field.bytes().await {
-            Ok(data) => data,
-            Err(_) => return (StatusCode::BAD_REQUEST, "Failed to read file data").into_response(),
-        };
-
-        let cid = Cid::of(&data);
-        let cid_string = cid.to_string();
-
-        // Save the file with the hash as the name
-        let path = PathBuf::from(state.dir).join(&cid_string);
-        match std::fs::File::create(&path) {
-            Ok(mut file) => {
-                if let Err(_) = file.write_all(&data) {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to write file")
-                        .into_response();
-                }
-            }
-            Err(_) => {
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create file")
-                    .into_response();
-            }
-        }
-
-        return (StatusCode::CREATED, cid_string).into_response();
-    }
-
-    (StatusCode::BAD_REQUEST, "No file provided").into_response()
 }

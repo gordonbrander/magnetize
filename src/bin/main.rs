@@ -24,21 +24,15 @@ fn main() {
             dir,
             addr,
             url,
-            post,
-            notify,
-            allow,
-            deny,
-            allow_all,
+            db,
+            fed_all,
         } => {
             serve(ServerConfig {
                 addr,
                 dir,
                 url,
-                allow_post: post,
-                allow_all,
-                notify,
-                allow,
-                deny,
+                db,
+                fed_all,
             });
         }
     }
