@@ -43,6 +43,7 @@ pub fn write_if_small<W: Write>(
     data: &[u8],
     max_bytes: usize,
 ) -> Result<(), io::Error> {
+    // Since data is slice of bytes, we can simply check its length to get number of bytes
     if data.len() > max_bytes {
         return Err(io::Error::other(format!(
             "Data too large. Must be >= {} bytes",
