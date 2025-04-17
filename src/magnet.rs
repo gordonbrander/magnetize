@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::cid::{Cid, CidError};
 use crate::url::Url;
 use crate::util::group;
 use std::result;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MagnetLink {
     /// CID for the data
     pub cid: Cid,
@@ -19,6 +21,17 @@ pub struct MagnetLink {
 }
 
 impl MagnetLink {
+    /// Create a new MagnetLink with only a CID.
+    pub fn new(cid: Cid) -> Self {
+        Self {
+            cid,
+            cdn: Vec::new(),
+            ws: Vec::new(),
+            xt: None,
+            dn: None,
+        }
+    }
+
     /// Parse a magnet link str into a Magnet struct.
     pub fn parse(url_str: &str) -> result::Result<Self, MagnetLinkError> {
         let url = Url::parse(url_str)?;

@@ -55,38 +55,21 @@ pub enum Commands {
         )]
         addr: String,
 
-        #[arg(
-            long,
-            help = "Public-facing URL of server. Used when sending peer notifications.",
-            value_name = "ADDRESS"
-        )]
+        #[arg(long, help = "Public-facing URL of server", value_name = "ADDRESS")]
         url: String,
 
-        #[arg(long, help = "Allow file uploads via POST?")]
-        post: bool,
+        #[arg(
+            long,
+            help = "Path to SQLite database file. Creates database if it doesn't already exist.",
+            value_name = "FILE",
+            default_value = "magnetize.sqlite"
+        )]
+        db: PathBuf,
 
         #[arg(
             long,
-            help = "Peers to send federation notifications to. File should contain line-delimited URLs."
+            help = "Allow federation with any server (i.e. ignore allow list)? Servers in the deny list will still be rejected."
         )]
-        notify: Option<PathBuf>,
-
-        #[arg(
-            long,
-            help = "Peers to allow federation notifications from. Notifications about peers in this list will be ignored. File should contain line-delimited URLs."
-        )]
-        deny: Option<PathBuf>,
-
-        #[arg(
-            long,
-            help = "Peers to allow federation notifications from. Notifications about peers that are not in this list will be ignored. File should contain line-delimited URLs."
-        )]
-        allow: Option<PathBuf>,
-
-        #[arg(
-            long,
-            help = "Allow federation from any peer? This flag overrides the allow list. However, peers in the deny list will still be ignored."
-        )]
-        allow_all: bool,
+        fed_all: bool,
     },
 }

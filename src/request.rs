@@ -1,7 +1,9 @@
 use crate::cid::Cid;
+use crate::magnet::MagnetLink;
 use crate::url::Url;
 use reqwest;
 pub use reqwest::{Client, Response};
+use serde_json;
 
 pub fn build_client(timeout: std::time::Duration) -> Result<Client, reqwest::Error> {
     let client = reqwest::ClientBuilder::new().timeout(timeout).build()?;
@@ -42,6 +44,17 @@ pub async fn get_and_check_cid(
 
     // Return the bytes
     Ok(body.to_vec())
+}
+
+/// Send a POST request to a fed URL using a magnet link to supply POST data
+pub async fn post_fed_cid_with_magnet(
+    client: &Client,
+    fed: &Url,
+    magnet: &MagnetLink,
+) -> Result<Response, RequestError> {
+    let magnet_json = serde_json::to_string(magnet)?;
+    let response = client.post(fed.as_str()).body(magnet_json).send().await?;
+    Ok(response)
 }
 
 /// Posts a notification to a URL, with CID and CDN headers.
@@ -97,5 +110,11 @@ impl From<reqwest::header::InvalidHeaderValue> for RequestError {
 impl From<url::ParseError> for RequestError {
     fn from(err: url::ParseError) -> Self {
         RequestError::UrlParseError(err)
+    }
+}
+
+impl From<serde_json::Error> for RequestError {
+    fn from(err: serde_json::Error) -> Self {
+        RequestError::IntegrityError(err.to_string())
     }
 }

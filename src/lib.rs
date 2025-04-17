@@ -1,8 +1,9 @@
 pub mod cid;
 pub mod cli;
+pub mod db;
 pub mod error;
 pub mod magnet;
-pub mod peers;
+pub mod migrate;
 pub mod request;
 pub mod server;
 pub mod url;

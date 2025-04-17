@@ -1,12 +1,11 @@
 use magnetize::cid::Cid;
 use magnetize::cli::{Cli, Commands, Parser};
 use magnetize::magnet::MagnetLink;
-use magnetize::peers::read_valid_urls_from_file;
 use magnetize::request::get_and_check_cid;
 use magnetize::server::{ServerConfig, serve};
 use magnetize::url::Url;
 use std::collections::HashSet;
-use std::fs::{self};
+use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use tokio::runtime;
@@ -25,26 +24,16 @@ fn main() {
             dir,
             addr,
             url,
-            post,
-            notify,
-            allow,
-            deny,
-            allow_all,
+            db,
+            fed_all,
         } => {
-            let notify = notify.map_or(Vec::new(), |path| {
-                read_valid_urls_from_file(path).expect("Unable to read notify file")
+            serve(ServerConfig {
+                addr,
+                dir,
+                url,
+                db,
+                fed_all,
             });
-            let allow = allow.map_or(Vec::new(), |path| {
-                read_valid_urls_from_file(path).expect("Unable to read allow file")
-            });
-            let deny = deny.map_or(Vec::new(), |path| {
-                read_valid_urls_from_file(path).expect("Unable to read deny file")
-            });
-            let url = Url::parse(&url).expect("Unable to parse URL");
-
-            serve(ServerConfig::new(
-                addr, url, dir, post, allow_all, notify, allow, deny,
-            ));
         }
     }
 }
