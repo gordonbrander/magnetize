@@ -67,25 +67,28 @@ pub enum Commands {
 
         #[arg(
             long,
+            default_value = "./notify.txt",
             help = "Peers to send federation notifications to. File should contain line-delimited URLs."
         )]
-        notify: Option<PathBuf>,
+        notify: PathBuf,
 
         #[arg(
             long,
-            help = "Peers to allow federation notifications from. Notifications about peers in this list will be ignored. File should contain line-delimited URLs."
+            default_value = "./deny.txt",
+            help = "Peers to deny federation notifications from. Notifications about peers in this list will be ignored. File should contain line-delimited URLs."
         )]
-        deny: Option<PathBuf>,
+        deny: PathBuf,
 
         #[arg(
             long,
+            default_value = "./allow.txt",
             help = "Peers to allow federation notifications from. Notifications about peers that are not in this list will be ignored. File should contain line-delimited URLs."
         )]
-        allow: Option<PathBuf>,
+        allow: PathBuf,
 
         #[arg(
             long,
-            help = "Allow federation from any peer? This flag overrides the allow list. However, peers in the deny list will still be ignored."
+            help = "Allow federation from any peer (ignore allow list)? Peers in the deny list will still be ignored."
         )]
         allow_all: bool,
     },

@@ -1,6 +1,9 @@
 use rand::rng;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
+use std::path::Path;
 
 /// Group a list of key-value pairs into a HashMap of key-to-vector.
 pub fn group<K, V>(pairs: Vec<(K, V)>) -> HashMap<K, Vec<V>>
@@ -22,6 +25,32 @@ pub fn random_choice<T>(mut items: Vec<T>, max: usize) -> Vec<T> {
     items.shuffle(&mut rng);
     items.truncate(max);
     items
+}
+
+/// Open or create a file at the given path.
+/// Returns an IO Result for a File handle.
+pub fn open_or_create_file(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(path)
+}
+
+/// Write data, only if it is small enough.
+pub fn write_if_small<W: Write>(
+    writer: &mut W,
+    data: &[u8],
+    max_bytes: usize,
+) -> Result<(), io::Error> {
+    if data.len() > max_bytes {
+        return Err(io::Error::other(format!(
+            "Data too large. Must be >= {} bytes",
+            max_bytes
+        )));
+    }
+    writer.write_all(data)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -116,5 +145,35 @@ mod tests {
         let selected = random_choice(items, 3);
 
         assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn test_write_if_small_within_limit() {
+        let mut buffer = Vec::new();
+        let data = [1, 2, 3, 4, 5];
+        let result = write_if_small(&mut buffer, &data, 10);
+
+        assert!(result.is_ok());
+        assert_eq!(buffer, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_write_if_small_exact_limit() {
+        let mut buffer = Vec::new();
+        let data = [1, 2, 3, 4, 5];
+        let result = write_if_small(&mut buffer, &data, 5);
+
+        assert!(result.is_ok());
+        assert_eq!(buffer, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_write_if_small_exceeds_limit() {
+        let mut buffer = Vec::new();
+        let data = [1, 2, 3, 4, 5];
+        let result = write_if_small(&mut buffer, &data, 4);
+
+        assert!(result.is_err());
+        assert_eq!(buffer.len(), 0);
     }
 }

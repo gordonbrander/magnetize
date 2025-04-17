@@ -44,9 +44,13 @@ See `mag --help` for a full list of commands and features.
 - [ ] Simple gossip-based federation
   - [x] Select n random peers and gossip updates to them
   - [x] Configurable list of peers to notify
+  - [ ] Allow peer discovery (save peers to notify list when accepting notifications)
   - [x] Configurable peer deny list
   - [x] Configurable peer allow list
   - [ ] Configurable CID block list
+- [ ] Peer bootstrapping API
+  - [ ] Request all / as much data as possible from a peer in the form of CIDs
+  - [ ] Kick off bootstrapping background task
 -  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links

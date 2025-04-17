@@ -1,8 +1,8 @@
 use crate::cid::Cid;
-use crate::peers::should_allow_peer;
+use crate::peers::{self, should_allow_peer};
 use crate::request::{self, Client};
 use crate::url::Url;
-use crate::util::random_choice;
+use crate::util::{open_or_create_file, random_choice};
 use axum::{
     Router,
     extract::{Multipart, Path, Query, State},
@@ -10,117 +10,56 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, head, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::{fs, io::Write};
+use std::{fs, fs::File, io::Write};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 use tower_http::trace::{self, TraceLayer};
 use tracing::Level;
 use url::Origin;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// The address the server should listen on
     pub addr: String,
+    pub url: String,
+    /// The directory where content-addressed files will be stored
+    pub dir: PathBuf,
+    pub allow_post: bool,
+    /// Allow federating with any peer?
+    pub allow_all: bool,
+    pub notify: PathBuf,
+    pub allow: PathBuf,
+    pub deny: PathBuf,
+}
+
+#[derive(Clone)]
+struct ServerState {
     pub url: Url,
     /// The directory where content-addressed files will be stored
     pub dir: PathBuf,
     pub allow_post: bool,
     /// Allow federating with any peer?
     pub allow_all: bool,
-    pub notify: Vec<Url>,
+    pub notify: PathBuf,
     pub allow: HashSet<Origin>,
     pub deny: HashSet<Origin>,
-}
-
-impl ServerConfig {
-    pub fn new(
-        addr: String,
-        url: Url,
-        dir: PathBuf,
-        allow_post: bool,
-        allow_all: bool,
-        notify: Vec<Url>,
-        allow: Vec<Url>,
-        deny: Vec<Url>,
-    ) -> Self {
-        ServerConfig {
-            addr,
-            url,
-            dir,
-            allow_post,
-            allow_all,
-            notify,
-            allow: HashSet::from_iter(allow.into_iter().map(|url| url.origin())),
-            deny: HashSet::from_iter(deny.into_iter().map(|url| url.origin())),
-        }
-    }
-}
-
-#[derive(Clone)]
-struct ServerState {
-    config: ServerConfig,
     pub client: Client,
     pub notification_sender: mpsc::Sender<NotifyTask>,
-}
-
-impl ServerState {
-    pub fn new(
-        config: ServerConfig,
-        client: Client,
-        notification_sender: mpsc::Sender<NotifyTask>,
-    ) -> Self {
-        ServerState {
-            config,
-            client,
-            notification_sender,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ServerError {
-    IoError(std::io::Error),
-    RequestError(reqwest::Error),
-    FileNotFound,
-}
-
-impl std::fmt::Display for ServerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ServerError::RequestError(err) => write!(f, "RequestError({})", err),
-            ServerError::IoError(err) => write!(f, "IoError({})", err),
-            ServerError::FileNotFound => write!(f, "File not found"),
-        }
-    }
-}
-
-impl std::error::Error for ServerError {}
-
-impl From<reqwest::Error> for ServerError {
-    fn from(err: reqwest::Error) -> Self {
-        ServerError::RequestError(err)
-    }
-}
-
-impl From<std::io::Error> for ServerError {
-    fn from(err: std::io::Error) -> Self {
-        ServerError::IoError(err)
-    }
 }
 
 /// Multithread server (number of threads = number of CPUs)
 #[tokio::main(flavor = "multi_thread")]
 pub async fn serve(config: ServerConfig) {
-    // Create the file storage directory if it doesn't exist
-    std::fs::create_dir_all(&config.dir).expect("Unable to create file storage directory");
-
     // Setup tracing (logs)
     tracing_subscriber::fmt()
         .with_target(false)
         .compact()
         .init();
+
+    // Create the file storage directory if it doesn't exist
+    std::fs::create_dir_all(&config.dir).expect("Unable to create file storage directory");
 
     // Create message channel for background tasks
     let (notification_sender, notification_receiver) = mpsc::channel::<NotifyTask>(1024);
@@ -133,7 +72,29 @@ pub async fn serve(config: ServerConfig) {
     let worker_client = client.clone();
     let worker_notify_peers = config.notify.clone();
 
-    let state = ServerState::new(config, client, notification_sender);
+    let url = Url::parse(&config.url).expect("Server URL is invalid");
+
+    let allow_file = open_or_create_file(&config.allow).expect("Could not open file");
+    let allow: HashSet<Origin> = peers::read_valid_urls_from_lines(allow_file)
+        .map(|url| url.origin())
+        .collect();
+
+    let deny_file = open_or_create_file(&config.deny).expect("Could not open file");
+    let deny: HashSet<Origin> = peers::read_valid_urls_from_lines(deny_file)
+        .map(|url| url.origin())
+        .collect();
+
+    let state = ServerState {
+        dir: config.dir,
+        allow_post: config.allow_post,
+        allow_all: config.allow_all,
+        notify: config.notify,
+        url,
+        allow,
+        deny,
+        client,
+        notification_sender,
+    };
 
     // Build our application with routes
     let app = Router::new()
@@ -185,13 +146,24 @@ struct NotifyTask {
 async fn notify_worker(
     mut receiver: mpsc::Receiver<NotifyTask>,
     client: reqwest::Client,
-    notify_peers: Vec<Url>,
+    notify_path: PathBuf,
 ) {
     tracing::info!("Notification worker started");
     // Process notifications until the channel is closed
     while let Some(task) = receiver.recv().await {
+        let notify_file = match File::open(&notify_path) {
+            Ok(file) => file,
+            Err(err) => {
+                tracing::error!(err = err.to_string(), "Unable to open notify file");
+                continue;
+            }
+        };
+
+        // Load peers from notify file
+        let all_peers: Vec<Url> = peers::read_valid_urls_from_lines(notify_file).collect();
+
         // Select up to 12 random peers to notify
-        let selected_peers = random_choice(notify_peers.clone(), 12);
+        let selected_peers = random_choice(all_peers, 12);
 
         // Add some jitter (random delay) to spread out traffic spikes in the network and prevent congestion
         // See: <https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/>
@@ -242,7 +214,7 @@ async fn get_cid(
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
-    let file_path = state.config.dir.join(&cid.to_string());
+    let file_path = state.dir.join(&cid.to_string());
 
     // Read and return file contents if it exists
     // Include content-digest header.
@@ -282,7 +254,7 @@ async fn head_cid(State(state): State<ServerState>, Path(cid): Path<String>) -> 
         return (StatusCode::BAD_REQUEST, "Invalid CID").into_response();
     };
 
-    let file_path = state.config.dir.join(&cid.to_string());
+    let file_path = state.dir.join(&cid.to_string());
 
     if file_path.exists() {
         (StatusCode::OK, "").into_response()
@@ -315,7 +287,7 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
         }
     };
 
-    let file_path = state.config.dir.join(&cid.to_string());
+    let file_path = state.dir.join(&cid.to_string());
 
     // Exit early if we already know about this CID
     if file_path.exists() {
@@ -323,12 +295,7 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
     }
 
     // Do we want to listen to notifications about this peer and fetch content from it?
-    if !should_allow_peer(
-        &ws,
-        &state.config.allow,
-        &state.config.deny,
-        state.config.allow_all,
-    ) {
+    if !should_allow_peer(&ws, &state.allow, &state.deny, state.allow_all) {
         return (StatusCode::BAD_REQUEST, "Untrusted peer origin").into_response();
     }
 
@@ -347,7 +314,7 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
     };
 
     // Construct URL pointing to the resource
-    let Ok(our_ws) = state.config.url.join(&cid.to_string()) else {
+    let Ok(our_ws) = state.url.join(&cid.to_string()) else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Unable to create URL to resource",
@@ -373,7 +340,7 @@ async fn post_notify(State(state): State<ServerState>, headers: HeaderMap) -> Re
 
 // Handler for POST /
 async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -> Response {
-    if state.config.allow_post == false {
+    if state.allow_post == false {
         return (StatusCode::FORBIDDEN, "Uploads are not allowed").into_response();
     }
 
@@ -388,7 +355,7 @@ async fn post_file(State(state): State<ServerState>, mut multipart: Multipart) -
         let cid_string = cid.to_string();
 
         // Save the file with the hash as the name
-        let path = PathBuf::from(state.config.dir).join(&cid_string);
+        let path = PathBuf::from(state.dir).join(&cid_string);
         match std::fs::File::create(&path) {
             Ok(mut file) => {
                 if let Err(_) = file.write_all(&data) {

@@ -1,65 +1,37 @@
 use crate::url::Url;
 use std::collections::HashSet;
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::Path;
 
-pub fn read_urls_from_lines<R: Read>(reader: R) -> Vec<Result<Url, UrlLinesError>> {
+/// Read line-delimited URLs from a reader.
+/// Returns an iterator of `Result<Url, UrlLinesError>`.
+pub fn read_urls_from_lines<R: Read>(
+    reader: R,
+) -> impl Iterator<Item = Result<Url, UrlLinesError>> {
     let buf_reader = BufReader::new(reader);
-    let mut results: Vec<Result<Url, UrlLinesError>> = Vec::new();
-    for line in buf_reader.lines() {
+    buf_reader.lines().map(|line| {
         let line = match line {
             Ok(line) => line,
-            Err(err) => {
-                results.push(Err(UrlLinesError::from(err)));
-                continue;
-            }
+            Err(err) => return Err(UrlLinesError::from(err)),
         };
-        let url = match Url::parse(&line) {
+        match Url::parse(&line) {
             Ok(url) => Ok(url),
             Err(err) => Err(UrlLinesError::from(err)),
-        };
-        results.push(url);
-    }
-    results
+        }
+    })
 }
 
-/// Read line-delimited URLs from a file
-pub fn read_valid_urls_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Url>, io::Error> {
-    let file = File::open(path)?;
-    let urls = read_urls_from_lines(file)
-        .into_iter()
-        .filter_map(|res| match res {
-            Ok(url) => Some(url),
-            Err(err) => {
-                eprintln!("Error reading notify URL: {}", err);
-                None
-            }
-        })
-        .collect();
-    Ok(urls)
+/// Read line-delimited URLs from a reader
+/// Discards invalid URLs
+pub fn read_valid_urls_from_lines<R: Read>(reader: R) -> impl Iterator<Item = url::Url> {
+    read_urls_from_lines(reader).filter_map(|res| res.ok())
 }
 
-/// Should we listen to notifications about this peer?
-/// - Deny list is always honored
-/// - Otherwise, notifications are restricted to allow list unless allow_all is true
-pub fn should_allow_peer(
-    peer: &Url,
-    allow: &HashSet<url::Origin>,
-    deny: &HashSet<url::Origin>,
-    allow_all: bool,
-) -> bool {
-    let peer_origin = peer.origin();
-    // Always honor deny list
-    if deny.contains(&peer_origin) {
-        return false;
-    }
-    // If peer is not in the deny list, and we allow all, return true
-    if allow_all {
-        return true;
-    }
-    // Otherwise check against allow list
-    allow.contains(&peer_origin)
+/// Read line-delimited URLs from a file path
+/// Discards invalid URLs
+pub fn read_valid_urls_from_path(path: &Path) -> Result<Vec<url::Url>, UrlLinesError> {
+    let file = std::fs::File::open(path)?;
+    Ok(read_valid_urls_from_lines(file).collect())
 }
 
 #[derive(Debug)]
@@ -92,11 +64,33 @@ impl From<url::ParseError> for UrlLinesError {
 }
 
 /// Write line-delimited peers to a writer, such as an open file.
-pub fn write_urls_to_lines<W: Write>(peers: &[Url], writer: &mut W) -> Result<(), io::Error> {
+pub fn write_urls_to_lines<W: Write>(writer: &mut W, peers: &[Url]) -> Result<(), io::Error> {
     for peer in peers {
         writeln!(writer, "{}", peer)?;
     }
     Ok(())
+}
+
+/// Should we listen to notifications about this peer?
+/// - Deny list is always honored
+/// - Otherwise, notifications are restricted to allow list unless allow_all is true
+pub fn should_allow_peer(
+    peer: &Url,
+    allow: &HashSet<url::Origin>,
+    deny: &HashSet<url::Origin>,
+    allow_all: bool,
+) -> bool {
+    let peer_origin = peer.origin();
+    // Always honor deny list
+    if deny.contains(&peer_origin) {
+        return false;
+    }
+    // If peer is not in the deny list, and we allow all, return true
+    if allow_all {
+        return true;
+    }
+    // Otherwise check against allow list
+    allow.contains(&peer_origin)
 }
 
 #[cfg(test)]
@@ -110,7 +104,6 @@ mod tests {
         let reader = Cursor::new(input);
 
         let peers: Vec<Url> = read_urls_from_lines(reader)
-            .into_iter()
             .filter_map(|url| url.ok())
             .collect();
 
@@ -125,11 +118,22 @@ mod tests {
         let reader = Cursor::new(input);
 
         let peers: Vec<Url> = read_urls_from_lines(reader)
-            .into_iter()
             .filter_map(|url| url.ok())
             .collect();
 
         assert_eq!(peers.len(), 0);
+    }
+
+    #[test]
+    fn test_read_valid_urls_from_lines() {
+        let input = "http://example.com\ninvalid url\nhttps://test.org\n";
+        let reader = Cursor::new(input);
+
+        let peers: Vec<Url> = read_valid_urls_from_lines(reader).collect();
+
+        assert_eq!(peers.len(), 2);
+        assert_eq!(peers[0].as_str(), "http://example.com/");
+        assert_eq!(peers[1].as_str(), "https://test.org/");
     }
 
     #[test]
@@ -140,7 +144,7 @@ mod tests {
             Url::parse("https://test.org").unwrap(),
         ];
 
-        write_urls_to_lines(&peers, &mut output).unwrap();
+        write_urls_to_lines(&mut output, &peers).unwrap();
 
         let result = String::from_utf8(output).unwrap();
         assert_eq!(result, "http://example.com/\nhttps://test.org/\n");
