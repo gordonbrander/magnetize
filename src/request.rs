@@ -44,28 +44,10 @@ pub async fn get_and_check_cid(
     Ok(body.to_vec())
 }
 
-/// Posts a notification to a URL, with CID and CDN headers.
-/// Returns the response.
-pub async fn post_notify(
-    client: &Client,
-    to: &Url,
-    ws: &Url,
-    cid: &Cid,
-) -> Result<Response, RequestError> {
-    let response = client
-        .post(to.as_str())
-        .header("ws", ws.to_string())
-        .header("cid", cid.to_string())
-        .send()
-        .await?;
-    Ok(response)
-}
-
 #[derive(Debug)]
 pub enum RequestError {
     RequestError(reqwest::Error),
     UrlParseError(url::ParseError),
-    InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
     IntegrityError(String),
 }
 
@@ -74,7 +56,6 @@ impl std::fmt::Display for RequestError {
         match self {
             RequestError::RequestError(err) => write!(f, "Request Error: {}", err),
             RequestError::UrlParseError(err) => write!(f, "URL Parse Error: {}", err),
-            RequestError::InvalidHeaderValue(err) => write!(f, "Invalid Header Value: {}", err),
             RequestError::IntegrityError(err) => write!(f, "Integrity Error: {}", err),
         }
     }
@@ -85,12 +66,6 @@ impl std::error::Error for RequestError {}
 impl From<reqwest::Error> for RequestError {
     fn from(err: reqwest::Error) -> Self {
         RequestError::RequestError(err)
-    }
-}
-
-impl From<reqwest::header::InvalidHeaderValue> for RequestError {
-    fn from(err: reqwest::header::InvalidHeaderValue) -> Self {
-        RequestError::InvalidHeaderValue(err)
     }
 }
 

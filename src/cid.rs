@@ -1,4 +1,5 @@
 use data_encoding;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{self, Read};
 use std::result;
@@ -120,6 +121,25 @@ impl Cid {
 
         // Return the encoded string (lowercase)
         encoded.to_lowercase()
+    }
+}
+
+impl Serialize for Cid {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Cid {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Cid::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 
