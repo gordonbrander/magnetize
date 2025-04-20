@@ -2,7 +2,6 @@ use crate::cid::Cid;
 use crate::url::Url;
 use reqwest;
 pub use reqwest::{Client, Response};
-use serde_json;
 
 pub fn build_client(timeout: std::time::Duration) -> Result<Client, reqwest::Error> {
     let client = reqwest::ClientBuilder::new().timeout(timeout).build()?;
@@ -49,7 +48,6 @@ pub async fn get_and_check_cid(
 pub enum RequestError {
     RequestError(reqwest::Error),
     UrlParseError(url::ParseError),
-    InvalidHeaderValue(reqwest::header::InvalidHeaderValue),
     IntegrityError(String),
 }
 
@@ -58,7 +56,6 @@ impl std::fmt::Display for RequestError {
         match self {
             RequestError::RequestError(err) => write!(f, "Request Error: {}", err),
             RequestError::UrlParseError(err) => write!(f, "URL Parse Error: {}", err),
-            RequestError::InvalidHeaderValue(err) => write!(f, "Invalid Header Value: {}", err),
             RequestError::IntegrityError(err) => write!(f, "Integrity Error: {}", err),
         }
     }
@@ -72,20 +69,8 @@ impl From<reqwest::Error> for RequestError {
     }
 }
 
-impl From<reqwest::header::InvalidHeaderValue> for RequestError {
-    fn from(err: reqwest::header::InvalidHeaderValue) -> Self {
-        RequestError::InvalidHeaderValue(err)
-    }
-}
-
 impl From<url::ParseError> for RequestError {
     fn from(err: url::ParseError) -> Self {
         RequestError::UrlParseError(err)
-    }
-}
-
-impl From<serde_json::Error> for RequestError {
-    fn from(err: serde_json::Error) -> Self {
-        RequestError::IntegrityError(err.to_string())
     }
 }
