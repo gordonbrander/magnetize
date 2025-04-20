@@ -10,7 +10,7 @@ magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
 
 Minimum viable decentralization is n > 1. Magnetize achieves minimum viable decentralization by combining a CID with multiple redundant places to GET it over HTTP.
 
-Notably, you do not have to trust the servers listed in the magnet link to serve the correct data. The CID acts as a cryptographic proof for the data, ensuring you get exactly the data you requested.
+Magnetized links are [self-certifying](https://jaygraber.medium.com/web3-is-self-certifying-9dad77fd8d81). You do not have to trust the servers in the magnet link to serve the correct data. The CID is a cryptographic proof for the data, ensuring that the data is what it says it is.
 
 Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 
@@ -20,38 +20,6 @@ Magnetize offers a CLI with several tools for content-addressed data over HTTP:
 - `mag add <FILE>`: add content addressed data from a file. This command will create a new file in the working directory who's name is the CID and who's contents is the file bytes.
 
 See `mag --help` for a full list of commands and features.
-
-## TODO
-
-- [x] `link` - create magnet for any HTTP URL
-  - [x] Fetch URL
-  - [x] Generate CID
-  - [x] Integrity check
-  - [ ] Generates infohash
-  - [x] Return magnet
-- [ ] `get` - fetch file using redundant sources
-  - [x] Fetch magnet using http
-  - [ ] Fetch magnet using BitTorrent
-- [x] `add` - add content-addressed data to directory
-- [ ] `serve` - content-addressed file server
-  - [x] GET content by CID
-  - [x] Store-and-forward federation
-  - [x] POST content to server
-  - [x] Option to turn off POST
-  - [ ] Option to require secret to POST
-  - [ ] Option to encrypt content ala Magenc
-  - [x] Logging (tracing)
-- [ ] Simple gossip-based federation
-  - [x] Select n random peers and gossip updates to them
-  - [x] Configurable list of peers to notify
-  - [ ] Allow peer discovery (save peers to notify list when accepting notifications)
-  - [x] Configurable peer deny list
-  - [x] Configurable peer allow list
-  - [ ] Configurable CID block list
-- [ ] Peer bootstrapping API
-  - [ ] Request all / as much data as possible from a peer in the form of CIDs
-  - [ ] Kick off bootstrapping background task
--  [ ] JS library for parsing/fetching magnetized links
 
 ## Magnet links
 
@@ -65,15 +33,13 @@ Magnet link parameters supported by Magnetize:
 - `dn`: "Display Name". A suggested file name.
 - `xt`: "Exact Topic". A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
 
-While magnet links are a de facto standard, without a formal standardized, there have been [attempts to document the way BitTorrent clients commonly use magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). Magnetize aims to be compatible with these. That means you can construct hybrid magnet links that work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter.
+Magnetize [aims to be compatible with common magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). This means you can construct hybrid magnet links which work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter:
 
 ```url
 magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
 ```
 
-This gives the magnet link added resiliency by allowing clients to fall back to BitTorrent's p2p network when an HTTP source is unavailable. When used with BitTorrent, you can think of the `ws` and `cdn` parameters as high availability peers you can try first, while falling back to BitTorrent's DHT if they go down.
-
-> TODO see if we can bundle a Torrent client into `mag get`.
+When used with BitTorrent, you can think of the `ws` and `cdn` parameters as high availability peers you can try first, while falling back to BitTorrent's DHT when an HTTP source is unavailable.
 
 ## CIDs
 
