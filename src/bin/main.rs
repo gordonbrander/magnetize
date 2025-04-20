@@ -20,20 +20,8 @@ fn main() {
         Commands::Link { url } => {
             cmd_link(url);
         }
-        Commands::Serve {
-            dir,
-            addr,
-            url,
-            db,
-            fed_all,
-        } => {
-            serve(ServerConfig {
-                addr,
-                dir,
-                url,
-                db,
-                fed_all,
-            });
+        Commands::Serve { dir, addr } => {
+            serve(ServerConfig { addr, dir });
         }
     }
 }

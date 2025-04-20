@@ -16,14 +16,8 @@ use tracing::Level;
 pub struct ServerConfig {
     /// The address the server should listen on
     pub addr: String,
-    /// Public-facing URL of the server
-    pub url: String,
     /// The directory where content-addressed files will be stored
     pub dir: PathBuf,
-    /// File path to SQLite database storing server state
-    pub db: PathBuf,
-    /// Allow federating with any peer?
-    pub fed_all: bool,
 }
 
 #[derive(Clone)]

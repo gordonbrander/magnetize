@@ -54,22 +54,5 @@ pub enum Commands {
             default_value = "0.0.0.0:3000"
         )]
         addr: String,
-
-        #[arg(long, help = "Public-facing URL of server", value_name = "ADDRESS")]
-        url: String,
-
-        #[arg(
-            long,
-            help = "Path to SQLite database file. Creates database if it doesn't already exist.",
-            value_name = "FILE",
-            default_value = "magnetize.sqlite"
-        )]
-        db: PathBuf,
-
-        #[arg(
-            long,
-            help = "Allow federation with any server (i.e. ignore allow list)? Servers in the deny list will still be rejected."
-        )]
-        fed_all: bool,
     },
 }
