@@ -46,6 +46,9 @@ pub async fn serve(config: ServerConfig) {
         .route("/", get(get_index))
         .route("/{cid}", get(get_cid))
         .route("/{cid}", head(head_cid))
+        // See <https://dasl.ing/rasl.html>
+        .route("/.well-known/rasl/{cid}", get(get_cid))
+        .route("/.well-known/rasl/{cid}", head(head_cid))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
