@@ -2,7 +2,7 @@ use crate::cid::Cid;
 use thiserror::Error;
 pub use url::{Origin, ParseError, Url};
 
-/// Given a cid urn string, parse it into a Cid.
+/// Parse `urn:cid` into Cid
 pub fn parse_cid_urn_str(urn_str: &str) -> Result<Cid, Error> {
     let cid_body = urn_str
         .strip_prefix("urn:cid:")
@@ -10,22 +10,34 @@ pub fn parse_cid_urn_str(urn_str: &str) -> Result<Cid, Error> {
     Cid::parse(cid_body).map_err(|e| Error::Value(e.to_string()))
 }
 
-impl TryFrom<Url> for Cid {
+impl TryFrom<&Url> for Cid {
     type Error = Error;
 
-    fn try_from(url: Url) -> Result<Cid, Self::Error> {
+    fn try_from(url: &Url) -> Result<Cid, Self::Error> {
         let url_str = url.as_str();
         parse_cid_urn_str(url_str)
     }
 }
 
-impl TryFrom<Cid> for Url {
+impl TryFrom<&Cid> for Url {
     type Error = Error;
 
-    fn try_from(cid: Cid) -> Result<Url, Self::Error> {
+    fn try_from(cid: &Cid) -> Result<Url, Self::Error> {
         let cid_str = cid.to_string();
         Url::parse(&format!("urn:cid:{}", cid_str)).map_err(|e| Error::Url(e))
     }
+}
+
+/// Parse `urn:btmh` into btmh string
+pub fn parse_btmh_urn_str(urn_str: &str) -> Result<String, Error> {
+    let btmh = urn_str
+        .strip_prefix("urn:btmh:")
+        .ok_or(Error::Value("Not a urn:btmh".to_string()))?;
+    Ok(btmh.to_string())
+}
+
+pub fn into_btmh_urn_str(btmh: &str) -> String {
+    format!("urn:btmh:{}", btmh)
 }
 
 #[derive(Debug, Error)]
