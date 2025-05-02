@@ -1,4 +1,4 @@
-use crate::magnet::MagnetLinkError;
+use crate::magnet;
 use crate::request::RequestError;
 use data_encoding::DecodeError;
 
@@ -6,7 +6,7 @@ use data_encoding::DecodeError;
 pub enum Error {
     IoError(std::io::Error),
     DecodeError(DecodeError),
-    MagnetLinkError(MagnetLinkError),
+    MagnetLinkError(magnet::Error),
     RequestError(RequestError),
 }
 

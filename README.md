@@ -5,7 +5,7 @@
 Content-addressed data over HTTP using magnet links.
 
 ```url
-magnet:?cid=<CID>&cdn=<URL>&cdn=<URL>
+magnet:?xt=urn:cid:<CID>&cdn=<URL>&cdn=<URL>
 ```
 
 Minimum viable decentralization is n > 1. Magnetize achieves minimum viable decentralization by combining a CID with multiple redundant places to GET it over HTTP.
@@ -27,11 +27,11 @@ Magnet links are used for locating data on BitTorrent. However, they are also a 
 
 Magnet link parameters supported by Magnetize:
 
-- `cid`: the CID.
-- `cdn`: URL to a location where you can GET the data by CID. E.g. if `cdn=https://example.com/ipfs`, then you can GET `https://example.com/ipfs/<CID>`.
-- `ws`: "Web Seed". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
-- `dn`: "Display Name". A suggested file name.
-- `xt`: "Exact Topic". A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
+- `xt=urn:cid:<CID>`: The CID.
+- `xt=urn:btmh:<INFOHASH>`:A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
+- `cdn=<URL>`: URL to a location where you can GET the data by CID. E.g. if `cdn=https://example.com/ipfs`, then you can GET `https://example.com/ipfs/<CID>`.
+- `ws=<URL>`: "Web Seed". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
+- `dn=<FILE>`: "Display Name". A suggested file name.
 
 Magnetize [aims to be compatible with common magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). This means you can construct hybrid magnet links which work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter:
 

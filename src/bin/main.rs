@@ -98,7 +98,7 @@ fn cmd_link(ws: Vec<String>) {
         cid,
         ws: ws_urls,
         cdn: Vec::new(),
-        xt: None,
+        btmh: None,
         dn: None,
     };
 
