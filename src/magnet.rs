@@ -10,9 +10,9 @@ use std::result;
 pub struct MagnetLink {
     /// CID for the data
     pub cid: Cid,
-    /// URLs that support HTTP GET'ing content by CID.
-    /// E.g. if cdn is `https://example.com`, you can GET `https://example.com/<cid>`.
-    pub cdn: Vec<Url>,
+    /// RASL seed - URLs that support HTTP GET at the RASL well-known endpoint.
+    /// See <https://dasl.ing/rasl.html>
+    pub rs: Vec<Url>,
     /// Web Seed (HTTP URL for the data)
     pub ws: Vec<Url>,
     /// BitTorrent infohash
@@ -26,7 +26,7 @@ impl MagnetLink {
     pub fn new(cid: Cid) -> Self {
         Self {
             cid,
-            cdn: Vec::new(),
+            rs: Vec::new(),
             ws: Vec::new(),
             btmh: None,
             dn: None,
@@ -53,8 +53,8 @@ impl MagnetLink {
 
         let btmh = xts.iter().find_map(|xt| parse_btmh_urn_str(xt).ok());
 
-        let cdn = query
-            .get("cdn")
+        let rs = query
+            .get("rs")
             .map(|v| v.into_iter().filter_map(|s| Url::parse(s).ok()).collect())
             .unwrap_or(Vec::new());
 
@@ -70,7 +70,7 @@ impl MagnetLink {
 
         Ok(MagnetLink {
             cid,
-            cdn,
+            rs,
             ws,
             btmh,
             dn,
@@ -80,10 +80,14 @@ impl MagnetLink {
     /// Returns a vec of all the URLS that you can hit to download the file.
     pub fn urls(&self) -> Vec<Url> {
         let cid_string = self.cid.to_string();
-        // Join CID to the end of CDN URLs
-        let cdn_urls = self.cdn.iter().filter_map(|url| url.join(&cid_string).ok());
+        // Join CID to the end of RASL URLs
+        let rasl_urls = self
+            .rs
+            .iter()
+            .filter_map(|url| into_rasl_url(url).ok())
+            .filter_map(|rasl_url| rasl_url.join(&cid_string).ok());
         let ws_urls = self.ws.clone().into_iter();
-        cdn_urls.chain(ws_urls).collect()
+        rasl_urls.chain(ws_urls).collect()
     }
 }
 
@@ -106,8 +110,8 @@ impl From<&MagnetLink> for Url {
                 query.append_pair("dn", dn);
             }
 
-            for value in magnet.cdn.iter() {
-                query.append_pair("cdn", value.as_str());
+            for value in magnet.rs.iter() {
+                query.append_pair("rs", value.as_str());
             }
 
             for value in magnet.ws.iter() {
@@ -135,6 +139,8 @@ impl From<&MagnetLink> for String {
 pub enum Error {
     #[error("Invalid magnet link")]
     InvalidMagnetLink(String),
+    #[error("Invalid RASL endpoint")]
+    InvalidRaslEndpoint(String),
     #[error("URL parse error: {0}")]
     UrlParseError(#[from] url::ParseError),
     #[error("CID error: {0}")]
@@ -145,6 +151,22 @@ impl From<cid::CidError> for Error {
     fn from(err: cid::CidError) -> Self {
         Error::Cid(err.to_string())
     }
+}
+
+/// Refactors a URL into a RASL CDN URL if possible.
+/// We use this as a sanitization step when parsing `rs` param.
+/// See <https://dasl.ing/rasl.html>.
+fn into_rasl_url(url: &Url) -> Result<Url, Error> {
+    let authority = url.authority();
+    if authority == "" {
+        return Err(Error::InvalidRaslEndpoint(format!(
+            "URL has no authority: {}",
+            url
+        )));
+    }
+    let rasl_url_string = format!("https://{authority}/.well-known/rasl/");
+    let rasl_url = Url::parse(&rasl_url_string)?;
+    Ok(rasl_url)
 }
 
 #[cfg(test)]
@@ -222,7 +244,7 @@ mod tests {
     fn test_to_string() {
         let magnet_link = MagnetLink {
             cid: Cid::parse("bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4").unwrap(),
-            cdn: Vec::new(),
+            rs: Vec::new(),
             ws: vec![Url::parse("https://example.com/file.txt").unwrap()],
             btmh: Some("d41d8cd98f00b204e9800998ecf8427e".to_string()),
             dn: Some("example_file".to_string()),
@@ -240,7 +262,7 @@ mod tests {
     fn test_to_string_minimal() {
         let magnet_link = MagnetLink {
             cid: Cid::parse("bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4").unwrap(),
-            cdn: Vec::new(),
+            rs: Vec::new(),
             ws: vec![],
             btmh: None,
             dn: None,
@@ -266,9 +288,9 @@ mod tests {
         let cid_str = "bafkreiayssqzzbn2cu5mx52dvrheh7aajsermbfsn6ggtypih2rk7r6er4";
         let magnet_link = MagnetLink {
             cid: Cid::parse(cid_str).unwrap(),
-            cdn: vec![
+            rs: vec![
                 Url::parse("https://cdn1.example.com/").unwrap(),
-                Url::parse("https://cdn2.example.com").unwrap(),
+                Url::parse("https://cdn2.example.com/junk/at-the/end").unwrap(),
             ],
             ws: vec![
                 Url::parse("https://direct1.example.com/file.txt").unwrap(),
@@ -283,12 +305,24 @@ mod tests {
         // Check that we have the expected number of URLs
         assert_eq!(urls.len(), 4);
 
-        // Check CDN URLs have CID appended
+        // Check RASL URLs have CID appended
         assert!(
-            urls.contains(&Url::parse(&format!("https://cdn1.example.com/{}", cid_str)).unwrap())
+            urls.contains(
+                &Url::parse(&format!(
+                    "https://cdn1.example.com/.well-known/rasl/{}",
+                    cid_str
+                ))
+                .unwrap()
+            )
         );
         assert!(
-            urls.contains(&Url::parse(&format!("https://cdn2.example.com/{}", cid_str)).unwrap())
+            urls.contains(
+                &Url::parse(&format!(
+                    "https://cdn2.example.com/.well-known/rasl/{}",
+                    cid_str
+                ))
+                .unwrap()
+            )
         );
 
         // Check WS URLs are left as-is
