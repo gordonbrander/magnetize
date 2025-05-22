@@ -97,7 +97,7 @@ fn cmd_link(ws: Vec<String>) {
     let mag = MagnetLink {
         cid,
         ws: ws_urls,
-        cdn: Vec::new(),
+        rs: Vec::new(),
         btmh: None,
         dn: None,
     };

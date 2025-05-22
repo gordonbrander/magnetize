@@ -5,7 +5,7 @@
 Content-addressed data over HTTP using magnet links.
 
 ```url
-magnet:?xt=urn:cid:<CID>&cdn=<URL>&cdn=<URL>
+magnet:?xt=urn:cid:<CID>&ws=<URL>&rs=<URL>
 ```
 
 Minimum viable decentralization is n > 1. Magnetize achieves minimum viable decentralization by combining a CID with multiple redundant places to GET it over HTTP.
@@ -29,17 +29,17 @@ Magnet link parameters supported by Magnetize:
 
 - `xt=urn:cid:<CID>`: The CID.
 - `xt=urn:btmh:<INFOHASH>`:A BitTorrent infohash, allowing this magnet link to be used with BitTorrent clients.
-- `cdn=<URL>`: URL to a location where you can GET the data by CID. E.g. if `cdn=https://example.com/ipfs`, then you can GET `https://example.com/ipfs/<CID>`.
-- `ws=<URL>`: "Web Seed". A direct HTTP link to the data. Unlike `cdn`, this option does not require the source to conform to a URL format.
+- `ws=<URL>`: "Web Seed". A direct HTTP link to the data matching the CID/infohash payload.
+- `rs=<URL>`: URL pointing to a CDN that supports HTTP GET for CIDs at the [well-known RASL endpoint](https://dasl.ing/rasl.html).
 - `dn=<FILE>`: "Display Name". A suggested file name.
 
 Magnetize [aims to be compatible with common magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). This means you can construct hybrid magnet links which work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter:
 
 ```url
-magnet:?xt=urn:btmh:<INFOHASH>&cid=<CID>&cdn=https://example.com/ipfs
+magnet:?xt=urn:btmh:<INFOHASH>&urn:cid:<CID>&rs=https://example.com
 ```
 
-When used with BitTorrent, you can think of the `ws` and `cdn` parameters as high availability peers you can try first, while falling back to BitTorrent's DHT when an HTTP source is unavailable.
+When used with BitTorrent, you can think of the `ws` and `rs` parameters as high availability peers to try first, while falling back to BitTorrent's DHT when an HTTP source is unavailable.
 
 ## CIDs
 
