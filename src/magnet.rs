@@ -1,10 +1,9 @@
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
 use crate::cid::{self, Cid};
-use crate::url::{Url, into_btmh_urn_str, parse_btmh_urn_str, parse_cid_urn_str};
+use crate::url::{Url, into_btmh_urn_str, into_rasl_url, parse_btmh_urn_str, parse_cid_urn_str};
 use crate::util::group;
+use serde::{Deserialize, Serialize};
 use std::result;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MagnetLink {
@@ -139,34 +138,10 @@ impl From<&MagnetLink> for String {
 pub enum Error {
     #[error("Invalid magnet link")]
     InvalidMagnetLink(String),
-    #[error("Invalid RASL endpoint")]
-    InvalidRaslEndpoint(String),
     #[error("URL parse error: {0}")]
     UrlParseError(#[from] url::ParseError),
     #[error("CID error: {0}")]
-    Cid(String),
-}
-
-impl From<cid::CidError> for Error {
-    fn from(err: cid::CidError) -> Self {
-        Error::Cid(err.to_string())
-    }
-}
-
-/// Refactors a URL into a RASL CDN URL if possible.
-/// We use this as a sanitization step when parsing `rs` param.
-/// See <https://dasl.ing/rasl.html>.
-fn into_rasl_url(url: &Url) -> Result<Url, Error> {
-    let authority = url.authority();
-    if authority == "" {
-        return Err(Error::InvalidRaslEndpoint(format!(
-            "URL has no authority: {}",
-            url
-        )));
-    }
-    let rasl_url_string = format!("https://{authority}/.well-known/rasl/");
-    let rasl_url = Url::parse(&rasl_url_string)?;
-    Ok(rasl_url)
+    Cid(#[from] cid::CidError),
 }
 
 #[cfg(test)]

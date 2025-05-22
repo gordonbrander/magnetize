@@ -40,6 +40,19 @@ pub fn into_btmh_urn_str(btmh: &str) -> String {
     format!("urn:btmh:{}", btmh)
 }
 
+/// Refactors a URL into a RASL CDN URL if possible.
+/// We use this as a sanitization step when parsing `rs` param.
+/// See <https://dasl.ing/rasl.html>.
+pub fn into_rasl_url(url: &Url) -> Result<Url, Error> {
+    let authority = url.authority();
+    if authority == "" {
+        return Err(Error::Value(format!("RASL URL has no authority: {}", url)));
+    }
+    let rasl_url_string = format!("https://{authority}/.well-known/rasl/");
+    let rasl_url = Url::parse(&rasl_url_string)?;
+    Ok(rasl_url)
+}
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Invalid URL")]
