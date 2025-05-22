@@ -36,7 +36,7 @@ Magnet link parameters supported by Magnetize:
 Magnetize [aims to be compatible with common magnet parameters](https://wiki.theory.org/BitTorrent_Magnet-URI_Webseeding). This means you can construct hybrid magnet links which work with both Magnetize and [BitTorrent](https://blog.libtorrent.org/2020/09/bittorrent-v2/). Just include the `xt` parameter:
 
 ```url
-magnet:?xt=urn:btmh:<INFOHASH>&urn:cid:<CID>&rs=https://example.com
+magnet:?xt=urn:btmh:<INFOHASH>&xt=urn:cid:<CID>&rs=https://example.com
 ```
 
 When used with BitTorrent, you can think of the `ws` and `rs` parameters as high availability peers to try first, while falling back to BitTorrent's DHT when an HTTP source is unavailable.
