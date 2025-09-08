@@ -24,5 +24,5 @@ tokio = { version = "1.45.0", features = [
 ] }
 tower-http = { version = "0.6.4", features = ["trace"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = { version = "2.5.4", features = ["serde"] }
